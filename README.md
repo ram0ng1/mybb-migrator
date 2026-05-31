@@ -89,6 +89,59 @@ are installed and enabled first.
 
 ---
 
+## 2.1. Quick start (full command sequence)
+
+Copy-paste, **edit the credentials on the first line**, and run from the Flarum
+root (`d:\laragon\www\flarum`). Only the first command carries the connection
+flags — every later command reuses them from `settings`.
+
+```powershell
+# 1) FIRST command sets + stores the MyBB DB connection (edit these values!)
+php flarum mybb:groups --force --host=127.0.0.1 --port=3306 -u root -p YOUR_PASSWORD -d your_mybb_db --prefix=dfsmybb_
+
+# Phase 1 — core (order matters)
+php flarum mybb:users        --force
+php flarum mybb:avatars      --force
+php flarum mybb:tags         --force
+php flarum mybb:content      --force
+php flarum mybb:likes        --force
+php flarum mybb:permissions  --force
+php flarum mybb:forum-perms  --force
+
+# Phase 2 — secondary content
+php flarum mybb:subscriptions  --force
+php flarum mybb:messages       --force
+php flarum mybb:polls          --force
+php flarum mybb:trade-feedback --force
+php flarum mybb:reviews        --force
+php flarum mybb:make-admin --username YOUR_USERNAME --force
+
+# rebuild caches / search index
+php flarum cache:clear
+```
+
+> **Tip — stop on first error.** Wrap Phases 1–2 in a loop so a failure halts the
+> whole run (each step depends on the previous one):
+>
+> ```powershell
+> php flarum mybb:groups --force --host=127.0.0.1 --port=3306 -u root -p YOUR_PASSWORD -d your_mybb_db --prefix=dfsmybb_
+> $steps = @(
+>   'mybb:users','mybb:avatars','mybb:tags','mybb:content','mybb:likes',
+>   'mybb:permissions','mybb:forum-perms','mybb:subscriptions','mybb:messages',
+>   'mybb:polls','mybb:trade-feedback','mybb:reviews'
+> )
+> foreach ($s in $steps) {
+>   Write-Host "==> php flarum $s --force" -ForegroundColor Cyan
+>   php flarum $s --force
+>   if ($LASTEXITCODE -ne 0) { Write-Host "FAILED at $s — stopping." -ForegroundColor Red; break }
+> }
+> ```
+
+Then run the **Phase 3** clean-up passes you need (see §4). Linux/macOS users:
+replace `^`/backtick line breaks with `\` and run under `bash`.
+
+---
+
 ## 3. Configuration (MyBB database connection)
 
 This extension has **no admin UI**. You point it at the MyBB database entirely
