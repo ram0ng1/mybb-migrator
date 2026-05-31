@@ -1,0 +1,71 @@
+<?php
+
+namespace Ramon\MybbMigrator\Console;
+
+use Flarum\Console\AbstractCommand;
+use Illuminate\Database\ConnectionInterface;
+use Symfony\Component\Console\Input\InputOption;
+
+/**
+ * Reverte `<ISPOILER>` (criada pelo flarum/bbcode a partir de `||texto||`)
+ * para a forma literal `||texto||`. No MyBB original, `||` era um separador
+ * visual ou pipe; não era marcação de spoiler.
+ *
+ *   <ISPOILER><s>||</s>texto<e>||</e></ISPOILER>  ->  ||texto||
+ */
+class RevertIspoilerCommand extends AbstractCommand
+{
+    public function __construct(protected ConnectionInterface $db)
+    {
+        parent::__construct();
+    }
+
+    protected function configure(): void
+    {
+        $this
+            ->setName('mybb:revert-ispoiler')
+            ->setDescription('Reverte <ISPOILER> (gerado pelo `||text||` do flarum/bbcode) para `||texto||` literal.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+    }
+
+    protected function fire(): int
+    {
+        if (! $this->input->getOption('force')) {
+            $this->error('Rode com --force.');
+            return 1;
+        }
+
+        $totalPosts = 0;
+
+        $this->info('Revertendo em posts.content...');
+        $this->db->table('posts')
+            ->where('content', 'LIKE', '%<ISPOILER>%')
+            ->orderBy('id')
+            ->chunkById(500, function ($rows) use (&$totalPosts) {
+                foreach ($rows as $row) {
+                    $old = (string) $row->content;
+                    $new = self::revert($old);
+
+                    if ($new !== $old) {
+                        $this->db->table('posts')->where('id', $row->id)->update(['content' => $new]);
+                        $totalPosts++;
+                    }
+                }
+                $this->info("  posts ajustados: {$totalPosts}");
+            });
+
+        $this->info('Concluído.');
+        $this->info("  posts ajustados : {$totalPosts}");
+
+        return 0;
+    }
+
+    public static function revert(string $xml): string
+    {
+        return (string) preg_replace_callback(
+            '#<ISPOILER>(?:<s>\|\|</s>)?(.*?)(?:<e>\|\|</e>)?</ISPOILER>#s',
+            static fn (array $m): string => '||' . $m[1] . '||',
+            $xml
+        );
+    }
+}

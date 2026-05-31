@@ -1,0 +1,205 @@
+<?php
+
+namespace Ramon\MybbMigrator\Console;
+
+use Flarum\Console\AbstractCommand;
+use Illuminate\Database\ConnectionInterface;
+use Ramon\MybbMigrator\Support\Charset;
+use Symfony\Component\Console\Input\InputOption;
+
+/**
+ * Revive os nomes originais dos usuários renomeados em
+ * `mybb_username_renames`, usando o esquema:
+ *
+ *   users.username  = slug kebab do original (rebus-knebus)  ← URL `/u/rebus-knebus`
+ *   users.nickname  = nome original com chars/espaços (Rebus Knebus)  ← display
+ *
+ * Também restaura referências em posts.content:
+ *   - `displayname="<slug>"` → `displayname="<original>"`
+ *   - `author="<slug>"`      → `author="<original>"`
+ *   - `username="<slug>"`    → `username="<original_kebab>"` (POSTMENTION.username
+ *     espelha users.username, ou seja o kebab)
+ *
+ * Idempotente: roda em cima do que `mybb:fix-usernames` deixou.
+ */
+class ApplyNicknamesCommand extends AbstractCommand
+{
+    public function __construct(protected ConnectionInterface $db)
+    {
+        parent::__construct();
+    }
+
+    protected function configure(): void
+    {
+        $this
+            ->setName('mybb:apply-nicknames')
+            ->setDescription('Promove old_username → nickname e gera slug kebab-case como username.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Mostra o que seria feito sem alterar nada.');
+    }
+
+    protected function fire(): int
+    {
+        if (! $this->input->getOption('force') && ! $this->input->getOption('dry-run')) {
+            $this->error('Rode com --force ou --dry-run.');
+            return 1;
+        }
+
+        $dryRun = (bool) $this->input->getOption('dry-run');
+
+        // Cache de usernames atuais pra resolver colisões.
+        $existing = [];
+        foreach ($this->db->table('users')->select('id', 'username')->get() as $row) {
+            $existing[strtolower($row->username)] = (int) $row->id;
+        }
+
+        $renames = $this->db->table('mybb_username_renames')
+            ->select('user_id', 'old_username', 'new_username')
+            ->orderBy('id')
+            ->get();
+
+        $this->info('Renames históricos a processar: ' . $renames->count());
+
+        // Map p/ Fase 2: SLUG_FIX_USERNAMES → ORIGINAL_USERNAME (display)
+        //               SLUG_FIX_USERNAMES → KEBAB_SLUG       (url slug)
+        $strtr = [];
+        $updated = 0;
+        $skipped = 0;
+
+        foreach ($renames as $r) {
+            // Repara mojibake (UTF-8 duplo) no nome original — "Ð”Ð¸Ð¼Ñ‹Ñ‡" → "Дымыч"
+            $original = Charset::fix((string) $r->old_username);
+            $fixSlug  = (string) $r->new_username;     // "RebusKnebus" (do fix-usernames)
+            $kebab    = $this->kebab($original);       // "rebus-knebus"
+
+            // Slugs muito curtos / com só dígitos / hífens são pouco úteis. Cai pra userN.
+            if ($kebab === '' || strlen(str_replace('-', '', $kebab)) < 2) {
+                $kebab = 'user' . $r->user_id;
+            }
+
+            // Resolução de colisão pro kebab — vê outros user ids
+            $key = strtolower($kebab);
+            if (isset($existing[$key]) && $existing[$key] !== (int) $r->user_id) {
+                $base = $kebab;
+                $i = 2;
+                while (isset($existing[strtolower($kebab)])) {
+                    $kebab = $base . '-' . $i;
+                    $i++;
+                }
+            }
+
+            // Atualiza o índice em memória (saída e entrada)
+            unset($existing[strtolower($fixSlug)]);
+            $existing[strtolower($kebab)] = (int) $r->user_id;
+
+            if ($dryRun) {
+                fwrite(STDOUT, sprintf("  [%d] %s | nickname=%s | username=%s\n", $r->user_id, $fixSlug, $original, $kebab));
+            } else {
+                $this->db->table('users')
+                    ->where('id', $r->user_id)
+                    ->update([
+                        'nickname' => $original,
+                        'username' => $kebab,
+                    ]);
+            }
+
+            // strtr map — displayname/author querem o ORIGINAL,
+            // username (do POSTMENTION/USERMENTION) quer o KEBAB.
+            $fixSlugX  = htmlspecialchars($fixSlug, ENT_QUOTES | ENT_XML1, 'UTF-8');
+            $originalX = htmlspecialchars($original, ENT_QUOTES | ENT_XML1, 'UTF-8');
+            $kebabX    = htmlspecialchars($kebab, ENT_QUOTES | ENT_XML1, 'UTF-8');
+
+            $strtr['displayname="' . $fixSlugX . '"'] = 'displayname="' . $originalX . '"';
+            $strtr['author="' . $fixSlugX . '"']      = 'author="' . $originalX . '"';
+            $strtr['username="' . $fixSlugX . '"']    = 'username="' . $kebabX . '"';
+
+            $updated++;
+            if ($updated % 100 === 0) {
+                $this->info("  {$updated} users mapeados…");
+            }
+        }
+
+        $this->info("Fase 1: {$updated} usuários processados.");
+
+        if ($dryRun) {
+            $this->info('(dry-run — fim)');
+            return 0;
+        }
+
+        if (count($strtr) === 0) {
+            $this->info('Nada a substituir em posts.');
+            return 0;
+        }
+
+        // ── Fase 2: passa pelos posts UMA vez aplicando o strtr inteiro.
+        $this->info('Fase 2: re-escrevendo refs em posts.content…');
+
+        // Filtro: posts contendo qualquer um dos fixSlugs.
+        $likeClauses = [];
+        $bindings = [];
+        foreach ($renames as $r) {
+            $likeClauses[] = 'content LIKE ?';
+            $bindings[] = '%' . addcslashes(htmlspecialchars((string) $r->new_username, ENT_QUOTES | ENT_XML1, 'UTF-8'), '\\%_') . '%';
+        }
+
+        // Em chunks pra não ter UM whereRaw gigante. Quebra em grupos de 200 LIKEs.
+        $chunkSize = 200;
+        $totalScanned = 0;
+        $totalUpdated = 0;
+
+        for ($i = 0; $i < count($likeClauses); $i += $chunkSize) {
+            $clausesChunk = array_slice($likeClauses, $i, $chunkSize);
+            $bindingsChunk = array_slice($bindings, $i, $chunkSize);
+
+            $sql = 'SELECT id, content FROM posts WHERE (' . implode(' OR ', $clausesChunk) . ') ORDER BY id';
+            $pdo = $this->db->getPdo();
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($bindingsChunk);
+            $stmt->setFetchMode(\PDO::FETCH_ASSOC);
+
+            while ($row = $stmt->fetch()) {
+                $totalScanned++;
+                $newContent = strtr((string) $row['content'], $strtr);
+                if ($newContent !== $row['content']) {
+                    $this->db->table('posts')->where('id', $row['id'])->update(['content' => $newContent]);
+                    $totalUpdated++;
+                }
+            }
+            $stmt->closeCursor();
+            $this->info("  chunk " . (intdiv($i, $chunkSize) + 1) . ": scanned={$totalScanned} updated={$totalUpdated}");
+        }
+
+        $this->info('Concluído.');
+        $this->info("  users           : {$updated}");
+        $this->info("  posts varridos  : {$totalScanned}");
+        $this->info("  posts atualizados: {$totalUpdated}");
+
+        return 0;
+    }
+
+    /**
+     * Converte um username arbitrário para kebab-case ASCII:
+     *  - normaliza Unicode pra ASCII (translit aproximada via iconv quando disponível)
+     *  - lowercase
+     *  - espaços / chars não-alfa → hífen
+     *  - colapsa múltiplos hífens, trim
+     */
+    public function kebab(string $username): string
+    {
+        $s = $username;
+
+        // Translit pra ASCII quando possível (perde acentos: Lévesque → Levesque).
+        if (function_exists('iconv')) {
+            $tr = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+            if (is_string($tr) && $tr !== '') {
+                $s = $tr;
+            }
+        }
+
+        $s = strtolower($s);
+        $s = (string) preg_replace('/[^a-z0-9]+/', '-', $s);
+        $s = trim($s, '-');
+
+        return $s;
+    }
+}

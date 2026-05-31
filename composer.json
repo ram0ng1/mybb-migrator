@@ -1,0 +1,37 @@
+{
+    "name": "ramon/mybb-migrator",
+    "description": "Migra fielmente um fórum MyBB (DVZ Hash) para o Flarum 2: usuários, senhas preservadas, grupos, permissões, fóruns, tópicos, posts (BBCode->Flarum), curtidas, menções, citações, assinaturas, mensagens privadas e enquetes.",
+    "type": "flarum-extension",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "flarum/core": "^2.0",
+        "ext-pdo": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ramon\\MybbMigrator\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Ramon\\MybbMigrator\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "flarum-extension": {
+            "title": "MyBB Migrator",
+            "category": "feature",
+            "icon": {
+                "name": "fas fa-exchange-alt",
+                "backgroundColor": "#1d4ed8",
+                "color": "#fff"
+            }
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
