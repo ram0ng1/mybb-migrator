@@ -131,6 +131,41 @@ After that, later commands can be run with just `--force`.
 > All write commands require `--force`. Most support `--dry-run` to preview.
 > Run from the Flarum root: `php flarum <command>`.
 
+### Recommended order at a glance
+
+The order below is **not arbitrary** — it is the exact sequence enforced by the
+ID/foreign-key dependencies between MyBB and Flarum. Run the phases top to bottom.
+
+| Phase | # | Command | What it does |
+|---|---|---|---|
+| **0** (optional) | — | `mybb:wipe` | clears Flarum content for a clean re-run |
+| **1 — Core** | 1 | `mybb:groups` | custom groups (gid≥8), IDs preserved |
+| | 2 | `mybb:users` | users (uid=id), captures passwords, maps groups |
+| | 3 | `mybb:avatars` | backfills `users.avatar_url` |
+| | 4 | `mybb:tags` | forums → tags (fid=id) + hierarchy |
+| | 5 | `mybb:content` | threads → discussions (tid=id), posts (pid=id), BBCode→Flarum, mentions |
+| | 6 | `mybb:likes` | post likes |
+| | 7 | `mybb:permissions` | default + custom-group permissions |
+| | 8 | `mybb:forum-perms` | per-forum view restrictions → tag perms |
+| **2 — Secondary** | 9 | `mybb:subscriptions` | thread/forum follows |
+| | 10 | `mybb:messages` | private messages (`fof/byobu`) |
+| | 11 | `mybb:polls` | polls + votes (`fof/polls`) |
+| | 12 | `mybb:trade-feedback` | iTrader (`traderfeedback`) |
+| | 13 | `mybb:reviews` | Community Reviews (`traderfeedback`) |
+| | 14 | `mybb:make-admin` | promote your own account to Admin |
+| **3 — Cleanup** | — | `mybb:fix-*` / `mybb:revert-*` | data-specific fidelity passes — run only what you need |
+
+> **⚠️ Golden rule:** if any command fails, **stop and fix it before continuing** —
+> each step depends on the previous one. Always **back up the Flarum database**
+> before you start, and use `--dry-run` first wherever it is available.
+
+**Before you start, confirm:**
+
+- [ ] Flarum DB **backed up**.
+- [ ] All *target extensions* (§1) installed **and enabled**.
+- [ ] `php flarum migrate` run (creates `mybb_legacy_passwords`).
+- [ ] MyBB DB credentials known (host/port/user/password/db/**prefix**).
+
 ### Phase 0 — Preparation
 
 ```bash
@@ -178,6 +213,13 @@ These are **idempotent fix-up passes** over already-migrated content. They were
 created to repair specific artifacts found in this forum's data (Tapatalk emoji,
 mojibake, literal BBCode that didn't parse, quote/mention styling, signatures).
 Run only the ones you need; safe to re-run.
+
+> **Do not run them all blindly.** They are specific to your dataset and some are
+> *opposites* of each other (e.g. `restore-quote-mentions` ↔ `revert-quote-mentions`,
+> `fix-quotes` ↔ `compact-quotes`) — running everything would undo itself. Migrate
+> Phases 1–2 first, look at the live forum, then apply only the passes you actually
+> need. The most commonly needed ones are `fix-charset`, `fix-smilies`,
+> `fix-emojis`, `normalize-bbcode`, `fix-user-mentions` and `fix-signatures`.
 
 ```bash
 php flarum mybb:fix-charset        --force   # repair mojibake in posts/titles
