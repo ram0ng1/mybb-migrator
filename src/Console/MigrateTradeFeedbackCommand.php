@@ -43,20 +43,20 @@ class MigrateTradeFeedbackCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:trade-feedback')
-            ->setDescription('Migra o feedback de trader (iTrader) do MyBB para huseyinfiliz/traderfeedback.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Migrate MyBB trader feedback (iTrader) to huseyinfiliz/traderfeedback.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
         if (! $this->db->getSchemaBuilder()->hasTable('tfb_feedbacks')) {
-            $this->error('Tabela tfb_feedbacks não existe. Instale e migre a extensão huseyinfiliz/traderfeedback primeiro.');
+            $this->error('Table tfb_feedbacks does not exist. Install and migrate the huseyinfiliz/traderfeedback extension first.');
             return 1;
         }
 
@@ -71,16 +71,16 @@ class MigrateTradeFeedbackCommand extends AbstractCommand
 
         foreach (['fid', 'giver', 'receiver', 'value', 'type', 'comments', 'approved', 'dateline'] as $required) {
             if (! isset($columns[$required])) {
-                $this->error("Tabela {$table} não tem a coluna esperada '{$required}'. Colunas: " . implode(',', array_keys($columns)));
+                $this->error("Table {$table} is missing the expected column '{$required}'. Columns: " . implode(',', array_keys($columns)));
                 return 1;
             }
         }
 
         $total = (int) $mybb->scalar("SELECT COUNT(*) FROM {$table}");
-        $this->info("Feedbacks a migrar: {$total}");
+        $this->info("Feedbacks to migrate: {$total}");
 
         $userIds = $this->loadIdSet('users');
-        $this->info('Usuários no Flarum: ' . count($userIds));
+        $this->info('Users in Flarum: ' . count($userIds));
 
         $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
 
@@ -128,7 +128,7 @@ class MigrateTradeFeedbackCommand extends AbstractCommand
                     $this->db->table('tfb_feedbacks')->insertOrIgnore($batch);
                     $inserted += count($batch);
                     $batch = [];
-                    $this->info("  {$inserted} inseridos...");
+                    $this->info("  {$inserted} inserted...");
                 }
             }
 
@@ -140,10 +140,10 @@ class MigrateTradeFeedbackCommand extends AbstractCommand
             $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
         }
 
-        $this->info("Import concluído. inseridos={$inserted}, pulados(usuário ausente)={$skippedUser}, pulados(self)={$skippedSelf}");
+        $this->info("Import done. inserted={$inserted}, skipped(missing user)={$skippedUser}, skipped(self)={$skippedSelf}");
 
         $statsCount = $this->rebuildStats();
-        $this->info("Stats recalculados para {$statsCount} usuários.");
+        $this->info("Stats recomputed for {$statsCount} users.");
 
         return 0;
     }

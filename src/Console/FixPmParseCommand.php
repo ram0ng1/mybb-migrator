@@ -28,14 +28,14 @@ class FixPmParseCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:fix-pm-parse')
-            ->setDescription('Aplica Formatter::parse no conteúdo dos posts de PMs (is_private=1) que ficaram com BBCode cru.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Applies Formatter::parse to the content of PM posts (is_private=1) that were left with raw BBCode.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -44,7 +44,7 @@ class FixPmParseCommand extends AbstractCommand
             ->where('discussions.is_private', 1)
             ->count();
 
-        $this->info("Posts de PM a re-parsear: {$total}");
+        $this->info("PM posts to re-parse: {$total}");
 
         $done = 0;
         $skipped = 0;
@@ -74,13 +74,13 @@ class FixPmParseCommand extends AbstractCommand
                     $this->db->table('posts')->where('id', $row->id)->update(['content' => $parsed]);
                     $done++;
                 }
-                $this->info("  {$done} reparseados, {$skipped} já XML, {$failed} falharam");
+                $this->info("  {$done} re-parsed, {$skipped} already XML, {$failed} failed");
             }, 'posts.id', 'id');
 
-        $this->info('Concluído.');
-        $this->info("  reparseados : {$done}");
-        $this->info("  já XML      : {$skipped}");
-        $this->info("  falha parse : {$failed}");
+        $this->info('Done.');
+        $this->info("  re-parsed    : {$done}");
+        $this->info("  already XML  : {$skipped}");
+        $this->info("  parse failed : {$failed}");
 
         return 0;
     }

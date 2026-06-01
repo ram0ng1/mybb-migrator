@@ -27,21 +27,21 @@ class RevertMdStrikeSubCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:revert-md-strike-sub')
-            ->setDescription('Reverte <DEL> e <SUB> que vieram de ~~text~~ e ~text~ markdown (eram separadores MyBB).')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Reverts <DEL> and <SUB> that came from ~~text~~ and ~text~ markdown (they were MyBB separators).')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
         $totalPosts = 0;
         $totalTitles = 0;
 
-        $this->info('Revertendo em posts.content...');
+        $this->info('Reverting in posts.content...');
         $this->db->table('posts')
             ->where(function ($q) {
                 $q->where('content', 'LIKE', '%<DEL>%')
@@ -58,11 +58,11 @@ class RevertMdStrikeSubCommand extends AbstractCommand
                         $totalPosts++;
                     }
                 }
-                $this->info("  posts ajustados: {$totalPosts}");
+                $this->info("  posts fixed: {$totalPosts}");
             });
 
-        $this->info('Concluído.');
-        $this->info("  posts ajustados      : {$totalPosts}");
+        $this->info('Done.');
+        $this->info("  posts fixed          : {$totalPosts}");
 
         return 0;
     }

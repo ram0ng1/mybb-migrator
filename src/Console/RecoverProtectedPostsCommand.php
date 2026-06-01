@@ -38,15 +38,15 @@ class RecoverProtectedPostsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:recover-protected')
-            ->setDescription('Re-converte posts corrompidos com PROTECTED_N literal a partir do MyBB original.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Re-converts posts corrupted with literal PROTECTED_N from the original MyBB.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -54,7 +54,7 @@ class RecoverProtectedPostsCommand extends AbstractCommand
         $prefix = $mybb->prefix();
 
         $total = (int) $this->db->table('posts')->where('content', 'LIKE', '%PROTECTED_%')->count();
-        $this->info("Posts a recuperar: {$total}");
+        $this->info("Posts to recover: {$total}");
 
         $stmt = $mybb->pdo()->prepare("SELECT message FROM {$prefix}posts WHERE pid = :pid");
 
@@ -90,14 +90,14 @@ class RecoverProtectedPostsCommand extends AbstractCommand
                     $done++;
                 }
 
-                $this->info("  {$done} recuperados, {$skipped} sem fonte MyBB, {$failed} falharam");
+                $this->info("  {$done} recovered, {$skipped} no MyBB source, {$failed} failed");
             }, 'id');
 
-        $this->info('Concluído.');
-        $this->info("  recuperados        : {$done}");
-        $this->info("  sem fonte no MyBB  : {$skipped}");
-        $this->info("  falha no parse     : {$failed}");
-        $this->info('Próximo: re-rode os fixes idempotentes (fix-size-bbcode, fix-smilies, fix-font-bbcode, restore-quote-mentions, fix-user-mentions, fix-mention-slugs).');
+        $this->info('Done.');
+        $this->info("  recovered          : {$done}");
+        $this->info("  no MyBB source     : {$skipped}");
+        $this->info("  parse failed       : {$failed}");
+        $this->info('Next: re-run the idempotent fixes (fix-size-bbcode, fix-smilies, fix-font-bbcode, restore-quote-mentions, fix-user-mentions, fix-mention-slugs).');
 
         return 0;
     }

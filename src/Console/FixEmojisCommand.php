@@ -23,23 +23,23 @@ class FixEmojisCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:fix-emojis')
-            ->setDescription('Converte [emojiN] do Tapatalk para Unicode em posts e títulos de discussões já migrados.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Converts Tapatalk [emojiN] to Unicode in already-migrated posts and discussion titles.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
         $postsFixed = $this->fixTable('posts', 'content');
         $discussionsFixed = $this->fixTable('discussions', 'title');
 
-        $this->info('Concluído.');
-        $this->info("  posts ajustados        : {$postsFixed}");
-        $this->info("  discussões ajustadas   : {$discussionsFixed}");
+        $this->info('Done.');
+        $this->info("  posts fixed          : {$postsFixed}");
+        $this->info("  discussions fixed    : {$discussionsFixed}");
 
         return 0;
     }
@@ -61,7 +61,7 @@ class FixEmojisCommand extends AbstractCommand
                         $fixed++;
                     }
                 }
-                $this->info("  {$table}: {$fixed} ajustados...");
+                $this->info("  {$table}: {$fixed} fixed...");
             });
 
         return $fixed;

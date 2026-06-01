@@ -33,9 +33,9 @@ class CompactQuotesCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:compact-quotes')
-            ->setDescription('Converte QUOTEs migrados para o estilo compacto (apenas POSTMENTION).')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Aplica de fato (sem isto é dry-run).')
-            ->addOption('pid', null, InputOption::VALUE_REQUIRED, 'Testa em um post específico (preview, não salva).');
+            ->setDescription('Converts migrated QUOTEs to the compact style (POSTMENTION only).')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Actually apply changes (without this it is a dry-run).')
+            ->addOption('pid', null, InputOption::VALUE_REQUIRED, 'Test on a specific post (preview, does not save).');
     }
 
     protected function fire(): int
@@ -75,12 +75,12 @@ class CompactQuotesCommand extends AbstractCommand
             $changed++;
 
             if ($changed % 2000 === 0) {
-                $this->info("  {$changed} alterados...");
+                $this->info("  {$changed} changed...");
             }
         }
 
-        $mode = $force ? 'APLICADO' : 'DRY-RUN (use --force)';
-        $this->info("[{$mode}] escaneados={$scanned}, a alterar={$changed}, pulados(XML inválido)={$skipped}");
+        $mode = $force ? 'APPLIED' : 'DRY-RUN (use --force)';
+        $this->info("[{$mode}] scanned={$scanned}, to change={$changed}, skipped(invalid XML)={$skipped}");
 
         return 0;
     }
@@ -89,13 +89,13 @@ class CompactQuotesCommand extends AbstractCommand
     {
         $row = $this->db->table('posts')->where('id', $pid)->first(['content']);
         if (! $row) {
-            $this->error("Post {$pid} não encontrado.");
+            $this->error("Post {$pid} not found.");
             return 1;
         }
         $new = $this->compact((string) $row->content);
-        $this->info("--- ANTES ---\n" . $row->content);
-        $this->info("--- DEPOIS ---\n" . ($new ?? '(sem mudança)'));
-        $this->info('XML válido: ' . (($new !== null && $this->validXml($new)) ? 'sim' : 'não'));
+        $this->info("--- BEFORE ---\n" . $row->content);
+        $this->info("--- AFTER ---\n" . ($new ?? '(no change)'));
+        $this->info('Valid XML: ' . (($new !== null && $this->validXml($new)) ? 'yes' : 'no'));
         return 0;
     }
 

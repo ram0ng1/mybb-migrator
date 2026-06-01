@@ -26,18 +26,18 @@ class RestoreQuoteMentionsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:restore-quote-mentions')
-            ->setDescription('Restaura POSTMENTION (@"Author"#pPID) antes de cada QUOTE com pid embutido.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Restores POSTMENTION (@"Author"#pPID) before each QUOTE with an embedded pid.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
-        $this->info('Carregando mapa pid -> (number, discussion_id)...');
+        $this->info('Loading pid -> (number, discussion_id) map...');
         $postMap = [];
         foreach ($this->db->table('posts')->select(['id', 'number', 'discussion_id'])->cursor() as $row) {
             $postMap[(int) $row->id] = [
@@ -45,7 +45,7 @@ class RestoreQuoteMentionsCommand extends AbstractCommand
                 'discussion_id' => (int) $row->discussion_id,
             ];
         }
-        $this->info('  ' . count($postMap) . ' posts mapeados.');
+        $this->info('  ' . count($postMap) . ' posts mapped.');
 
         $totalFixed = 0;
         $totalMentions = 0;
@@ -80,12 +80,12 @@ class RestoreQuoteMentionsCommand extends AbstractCommand
                     }
                 }
 
-                $this->info("  {$totalFixed} posts ajustados, {$totalMentions} menções no índice");
+                $this->info("  {$totalFixed} posts fixed, {$totalMentions} mentions in index");
             });
 
-        $this->info('Concluído.');
-        $this->info("  posts ajustados        : {$totalFixed}");
-        $this->info("  menções inseridas       : {$totalMentions}");
+        $this->info('Done.');
+        $this->info("  posts fixed            : {$totalFixed}");
+        $this->info("  mentions inserted       : {$totalMentions}");
 
         return 0;
     }

@@ -22,16 +22,16 @@ class MakeAdminCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:make-admin')
-            ->setDescription('Promove o usuário escolhido (default ramon) ao grupo Admin.')
+            ->setDescription('Promotes the chosen user (default ramon) to the Admin group.')
             ->addOption('username', null, InputOption::VALUE_REQUIRED, 'Username (default: ramon).', 'ramon')
-            ->addOption('like', null, InputOption::VALUE_NONE, 'Usa LIKE %username% para busca parcial (case-insensitive).')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->addOption('like', null, InputOption::VALUE_NONE, 'Uses LIKE %username% for partial matching (case-insensitive).')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -49,16 +49,16 @@ class MakeAdminCommand extends AbstractCommand
         $users = $query->orderBy('id')->limit(10)->get();
 
         if ($users->isEmpty()) {
-            $this->error("Nenhum usuário encontrado para '{$username}'.");
+            $this->error("No user found for '{$username}'.");
             return 1;
         }
 
         if ($users->count() > 1) {
-            $this->info('Múltiplos candidatos encontrados:');
+            $this->info('Multiple candidates found:');
             foreach ($users as $u) {
                 $this->info("  id={$u->id}  username={$u->username}");
             }
-            $this->info('Use --username exato (sem --like) para escolher um.');
+            $this->info('Use an exact --username (without --like) to choose one.');
             return 1;
         }
 
@@ -76,7 +76,7 @@ class MakeAdminCommand extends AbstractCommand
             ]);
         }
 
-        $this->info("✓ {$user->username} (id={$user->id}) agora é Admin" . ($already ? ' (já era).' : '.'));
+        $this->info("✓ {$user->username} (id={$user->id}) is now Admin" . ($already ? ' (already was).' : '.'));
 
         return 0;
     }

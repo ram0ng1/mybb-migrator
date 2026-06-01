@@ -31,21 +31,21 @@ class NormalizeBbcodeCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:normalize-bbcode')
-            ->setDescription('Re-parseia posts.content aplicando Converter::normalizeBbcode (size/font/align/hr/php).')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Re-parses posts.content applying Converter::normalizeBbcode (size/font/align/hr/php).')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
         // Sintomas: literais como [size=NAME] (não numérico), [font=, [align=
         // (não-center), [hr], [php]. Vamos pegar superset com LIKE %[size=%
         // OR %[font=% OR %[align=% OR %[hr%] OR %[php% e refazer.
-        $this->info('Buscando posts com BBCode não normalizado…');
+        $this->info('Searching for posts with non-normalized BBCode…');
 
         $base = $this->db->table('posts')
             ->where(function ($q) {
@@ -60,7 +60,7 @@ class NormalizeBbcodeCommand extends AbstractCommand
             });
 
         $total = (int) (clone $base)->count();
-        $this->info("Posts elegíveis: {$total}");
+        $this->info("Eligible posts: {$total}");
 
         $done = 0;
         $skipped = 0;
@@ -98,13 +98,13 @@ class NormalizeBbcodeCommand extends AbstractCommand
                     $this->db->table('posts')->where('id', $row->id)->update(['content' => $newXml]);
                     $done++;
                 }
-                $this->info("  {$done} re-parseados, {$skipped} ignorados, {$failed} falharam");
+                $this->info("  {$done} re-parsed, {$skipped} skipped, {$failed} failed");
             }, 'id', 'id');
 
-        $this->info('Concluído.');
-        $this->info("  re-parseados : {$done}");
-        $this->info("  ignorados    : {$skipped}");
-        $this->info("  falharam     : {$failed}");
+        $this->info('Done.');
+        $this->info("  re-parsed : {$done}");
+        $this->info("  skipped   : {$skipped}");
+        $this->info("  failed    : {$failed}");
 
         return 0;
     }

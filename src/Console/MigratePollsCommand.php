@@ -38,9 +38,9 @@ class MigratePollsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:polls')
-            ->setDescription('Migra enquetes e votos do MyBB para fof/polls.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Pula a confirmação interativa.')
-            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Não escreve no banco; apenas reporta o plano.');
+            ->setDescription('Migrate MyBB polls and votes to fof/polls.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Skip the interactive confirmation.')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview changes without writing.');
 
         $this->addMybbConnectionOptions();
     }
@@ -48,7 +48,7 @@ class MigratePollsCommand extends AbstractCommand
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Comando destrutivo. Rode com --force para confirmar.');
+            $this->error('Destructive command. Run with --force to confirm.');
             return 1;
         }
 
@@ -58,7 +58,7 @@ class MigratePollsCommand extends AbstractCommand
         if (! $dryRun) {
             $this->wipeFlarumPollsTables();
         } else {
-            $this->info('[dry-run] limpeza das tabelas de polls suprimida.');
+            $this->info('[dry-run] cleanup of polls tables suppressed.');
         }
 
         $stats = [
@@ -85,12 +85,12 @@ class MigratePollsCommand extends AbstractCommand
             $stats['votes_skipped']   += $result['votes_skipped'];
         }
 
-        $this->info('Migração concluída:');
-        $this->info(sprintf('  polls criadas:    %d', $stats['polls_created']));
-        $this->info(sprintf('  opções criadas:   %d', $stats['options_created']));
-        $this->info(sprintf('  votos criados:    %d', $stats['votes_created']));
-        $this->info(sprintf('  polls puladas:    %d (discussão ausente ou sem opções)', $stats['polls_skipped']));
-        $this->info(sprintf('  votos pulados:    %d (usuário ou opção ausente)', $stats['votes_skipped']));
+        $this->info('Migration complete:');
+        $this->info(sprintf('  polls created:    %d', $stats['polls_created']));
+        $this->info(sprintf('  options created:  %d', $stats['options_created']));
+        $this->info(sprintf('  votes created:    %d', $stats['votes_created']));
+        $this->info(sprintf('  polls skipped:    %d (missing discussion or no options)', $stats['polls_skipped']));
+        $this->info(sprintf('  votes skipped:    %d (missing user or option)', $stats['votes_skipped']));
 
         return 0;
     }
@@ -101,7 +101,7 @@ class MigratePollsCommand extends AbstractCommand
      */
     protected function wipeFlarumPollsTables(): void
     {
-        $this->info('Limpando tabelas atuais de fof/polls...');
+        $this->info('Cleaning current fof/polls tables...');
         $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
 
         try {
@@ -131,7 +131,7 @@ class MigratePollsCommand extends AbstractCommand
             ->first();
 
         if ($discussion === null) {
-            $this->info("  pulada poll #$pid: discussão tid=$tid não existe em flarum.discussions");
+            $this->info("  skipped poll #$pid: discussion tid=$tid does not exist in flarum.discussions");
             return null;
         }
 
@@ -154,13 +154,13 @@ class MigratePollsCommand extends AbstractCommand
         }
 
         if ($postId === 0) {
-            $this->info("  pulada poll #$pid: nenhum post inicial localizado para tid=$tid");
+            $this->info("  skipped poll #$pid: no starting post found for tid=$tid");
             return null;
         }
 
         $labels = PollOptionsParser::parse((string) $row['options']);
         if ($labels === []) {
-            $this->info("  pulada poll #$pid: lista de opções vazia ou ilegível");
+            $this->info("  skipped poll #$pid: empty or unreadable options list");
             return null;
         }
 

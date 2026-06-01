@@ -30,15 +30,15 @@ class MigrateTagsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:tags')
-            ->setDescription('Migra os fóruns do MyBB para tags do Flarum preservando IDs e hierarquia.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Migrate MyBB forums to Flarum tags, preserving IDs and hierarchy.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -54,6 +54,15 @@ class MigrateTagsCommand extends AbstractCommand
         $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
 
         try {
+            // Self-clean so the command is idempotent: removes the default tag
+            // flarum/tags ships with (id=1) and any tags from a previous run,
+            // which would otherwise collide on the preserved fid primary key.
+            foreach (['discussion_tag', 'tag_user', 'tags'] as $t) {
+                if ($this->db->getSchemaBuilder()->hasTable($t)) {
+                    $this->db->table($t)->truncate();
+                }
+            }
+
             $now = date('Y-m-d H:i:s');
             $inserted = 0; $skipped = 0;
             $slugTaken = [];
@@ -99,7 +108,7 @@ class MigrateTagsCommand extends AbstractCommand
             $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
         }
 
-        $this->info("Tags migradas: {$inserted} (redirects pulados: {$skipped})");
+        $this->info("Tags migrated: {$inserted} (redirects skipped: {$skipped})");
 
         return 0;
     }

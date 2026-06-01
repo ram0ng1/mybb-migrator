@@ -29,14 +29,14 @@ class WipeCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:wipe')
-            ->setDescription('Limpa o conteúdo do Flarum atual (mantém schema, grupos do core e settings).')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Pula a confirmação interativa.');
+            ->setDescription('Wipe the current Flarum content (keeps schema, core groups and settings).')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Skip the interactive confirmation.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Comando destrutivo. Rode com --force para confirmar.');
+            $this->error('Destructive command. Run with --force to confirm.');
             return 1;
         }
 
@@ -57,7 +57,7 @@ class WipeCommand extends AbstractCommand
             'users',
         ];
 
-        $this->info('Desabilitando FKs e truncando tabelas de conteúdo...');
+        $this->info('Disabling FKs and truncating content tables...');
         $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
 
         try {
@@ -83,7 +83,7 @@ class WipeCommand extends AbstractCommand
             $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
         }
 
-        $this->info('Limpeza concluída.');
+        $this->info('Cleanup complete.');
         return 0;
     }
 }

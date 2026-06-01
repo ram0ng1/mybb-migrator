@@ -43,17 +43,17 @@ class MigrateUsersCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:users')
-            ->setDescription('Migra usuários do MyBB para o Flarum preservando IDs e capturando os hashes em mybb_legacy_passwords.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.')
-            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Conta e relata sem escrever no Flarum.')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Migrar no máximo N usuários (útil em testes).', null);
+            ->setDescription('Migrate MyBB users to Flarum, preserving IDs and capturing hashes in mybb_legacy_passwords.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Count and report without writing to Flarum.')
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Migrate at most N users (useful for testing).', null);
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -70,10 +70,10 @@ class MigrateUsersCommand extends AbstractCommand
         $hasReadNotif = $schema->hasColumn('users', 'read_notifications_at');
 
         $total = (int) $mybb->scalar("SELECT COUNT(*) FROM {$prefix}users");
-        $this->info("Usuários no MyBB: {$total}" . ($limit !== null ? " (limite={$limit})" : ''));
+        $this->info("Users in MyBB: {$total}" . ($limit !== null ? " (limit={$limit})" : ''));
 
         if ($dryRun) {
-            $this->info('Dry-run — nenhuma escrita.');
+            $this->info('Dry-run — nothing written.');
             return 0;
         }
 
@@ -175,14 +175,14 @@ class MigrateUsersCommand extends AbstractCommand
             $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
         }
 
-        $this->info("Concluído.");
-        $this->info("  usuários inseridos : {$processed}");
-        $this->info("  pulados (uid/user/email vazio): {$skipped}");
-        $this->info("  hashes capturados   : {$captured}");
-        $this->info("  marcados banidos    : {$banned}");
-        $this->info("  aguardando ativação : {$awaiting}");
-        $this->info("  associados a Admin  : {$adminCount}");
-        $this->info("  associados a Mod    : {$modCount}");
+        $this->info("Done.");
+        $this->info("  users inserted      : {$processed}");
+        $this->info("  skipped (empty uid/user/email): {$skipped}");
+        $this->info("  hashes captured     : {$captured}");
+        $this->info("  marked banned       : {$banned}");
+        $this->info("  awaiting activation : {$awaiting}");
+        $this->info("  assigned to Admin   : {$adminCount}");
+        $this->info("  assigned to Mod     : {$modCount}");
 
         return 0;
     }

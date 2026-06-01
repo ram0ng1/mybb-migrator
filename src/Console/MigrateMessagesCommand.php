@@ -52,10 +52,10 @@ class MigrateMessagesCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:messages')
-            ->setDescription('Migra as mensagens privadas do MyBB para discussões privadas do fof/byobu.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma a execução destrutiva.')
-            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Não escreve nada; apenas conta o que seria criado.')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Processa no máximo N conversas.', null);
+            ->setDescription('Migrate MyBB private messages to fof/byobu private discussions.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm the destructive execution.')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview changes without writing.')
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Process at most N conversations.', null);
 
         $this->addMybbConnectionOptions();
     }
@@ -68,7 +68,7 @@ class MigrateMessagesCommand extends AbstractCommand
         $limit  = $limit === null ? null : max(1, (int) $limit);
 
         if (! $force && ! $dryRun) {
-            $this->error('Comando destrutivo. Rode com --force (ou --dry-run para apenas contar).');
+            $this->error('Destructive command. Run with --force (or --dry-run to only count).');
             return 1;
         }
 
@@ -78,21 +78,21 @@ class MigrateMessagesCommand extends AbstractCommand
             $this->wipePreviousPrivateContent();
         }
 
-        $this->info('[mybb:messages] Carregando uids válidos do Flarum...');
+        $this->info('[mybb:messages] Loading valid uids from Flarum...');
         $validUids = $this->loadValidUserIds();
-        $this->info('[mybb:messages]   ' . count($validUids) . ' usuários disponíveis.');
+        $this->info('[mybb:messages]   ' . count($validUids) . ' users available.');
 
-        $this->info('[mybb:messages] Agrupando PMs do MyBB (folder=' . self::SOURCE_FOLDER . ')...');
+        $this->info('[mybb:messages] Grouping MyBB PMs (folder=' . self::SOURCE_FOLDER . ')...');
         $conversations = $this->groupConversations($mybb, $validUids);
         $totalConversations = count($conversations);
-        $this->info('[mybb:messages]   ' . $totalConversations . ' conversas detectadas.');
+        $this->info('[mybb:messages]   ' . $totalConversations . ' conversations detected.');
 
         if ($dryRun) {
             $totalPosts = 0;
             foreach ($conversations as $conv) {
                 $totalPosts += count($conv['messages']);
             }
-            $this->info("[mybb:messages] DRY-RUN: $totalConversations conversas, $totalPosts posts criariam.");
+            $this->info("[mybb:messages] DRY-RUN: $totalConversations conversations, $totalPosts posts would be created.");
             return 0;
         }
 
@@ -115,14 +115,14 @@ class MigrateMessagesCommand extends AbstractCommand
             $created++;
 
             if ($created % 100 === 0) {
-                $this->info("[mybb:messages] $created conversas, $postsCreated posts");
+                $this->info("[mybb:messages] $created conversations, $postsCreated posts");
             }
         }
 
-        $this->info('[mybb:messages] Concluído.');
-        $this->info("[mybb:messages]   conversas criadas: $created");
-        $this->info("[mybb:messages]   posts criados:    $postsCreated");
-        $this->info("[mybb:messages]   conversas puladas (usuário ausente): $skipped");
+        $this->info('[mybb:messages] Done.');
+        $this->info("[mybb:messages]   conversations created: $created");
+        $this->info("[mybb:messages]   posts created:    $postsCreated");
+        $this->info("[mybb:messages]   conversations skipped (missing user): $skipped");
 
         return 0;
     }
@@ -134,7 +134,7 @@ class MigrateMessagesCommand extends AbstractCommand
      */
     private function wipePreviousPrivateContent(): void
     {
-        $this->info('[mybb:messages] Limpando conteúdo de execução anterior...');
+        $this->info('[mybb:messages] Cleaning up content from a previous run...');
         $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
 
         try {
@@ -232,7 +232,7 @@ class MigrateMessagesCommand extends AbstractCommand
                 $groups[$key] = [
                     'key'           => $key,
                     'participants'  => $participants,
-                    'title'         => $subject !== '' ? $subject : '(sem assunto)',
+                    'title'         => $subject !== '' ? $subject : '(no subject)',
                     'firstDateline' => $dateline,
                     'lastDateline'  => $dateline,
                     'starter'       => $fromid,

@@ -26,26 +26,26 @@ class FixCharsetCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:fix-charset')
-            ->setDescription('Repara mojibake em posts.content e discussions.title já migrados.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Repairs mojibake in already-migrated posts.content and discussions.title.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
-        $this->info('Reparando posts...');
+        $this->info('Repairing posts...');
         $postsFixed = $this->fixTable('posts', 'content');
 
-        $this->info('Reparando títulos de discussões...');
+        $this->info('Repairing discussion titles...');
         $discussionsFixed = $this->fixTable('discussions', 'title');
 
-        $this->info('Concluído.');
-        $this->info("  posts ajustados      : {$postsFixed}");
-        $this->info("  discussões ajustadas : {$discussionsFixed}");
+        $this->info('Done.');
+        $this->info("  posts fixed        : {$postsFixed}");
+        $this->info("  discussions fixed  : {$discussionsFixed}");
 
         return 0;
     }
@@ -68,7 +68,7 @@ class FixCharsetCommand extends AbstractCommand
                         $fixed++;
                     }
                 }
-                $this->info("  {$table}: {$seen} varridos, {$fixed} corrigidos");
+                $this->info("  {$table}: {$seen} scanned, {$fixed} fixed");
             });
 
         return $fixed;

@@ -27,14 +27,14 @@ class MigratePermissionsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:permissions')
-            ->setDescription('Configura permissões padrão do Flarum + grupos customizados migrados.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Configure default Flarum permissions + migrated custom groups.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -77,8 +77,8 @@ class MigratePermissionsCommand extends AbstractCommand
             }
         }
 
-        $this->info("Permissões concedidas: {$inserted}");
-        $this->info('  grupos contemplados: Guest(2), Member(3), Mod(4) + customizados migrados.');
+        $this->info("Permissions granted: {$inserted}");
+        $this->info('  groups covered: Guest(2), Member(3), Mod(4) + migrated custom groups.');
 
         return 0;
     }

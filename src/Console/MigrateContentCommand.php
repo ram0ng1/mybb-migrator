@@ -49,17 +49,17 @@ class MigrateContentCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:content')
-            ->setDescription('Migra tópicos e posts do MyBB para discussões e posts do Flarum (com conversão BBCode->Flarum e preservação de IDs).')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Migrar no máximo N tópicos.', null)
-            ->addOption('skip-soft-deleted', null, InputOption::VALUE_NONE, 'Pula posts/threads soft-deleted (visible=-1).');
+            ->setDescription('Migrate MyBB threads and posts to Flarum discussions and posts (with BBCode->Flarum conversion and ID preservation).')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.')
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Migrate at most N threads.', null)
+            ->addOption('skip-soft-deleted', null, InputOption::VALUE_NONE, 'Skip soft-deleted posts/threads (visible=-1).');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -71,7 +71,7 @@ class MigrateContentCommand extends AbstractCommand
 
         $totalThreads = (int) $mybb->scalar("SELECT COUNT(*) FROM {$prefix}threads");
         $totalPosts = (int) $mybb->scalar("SELECT COUNT(*) FROM {$prefix}posts");
-        $this->info("Origem: {$totalThreads} tópicos / {$totalPosts} posts" . ($limit ? " (limite={$limit} tópicos)" : ''));
+        $this->info("Source: {$totalThreads} threads / {$totalPosts} posts" . ($limit ? " (limit={$limit} threads)" : ''));
 
         $schema = $this->db->getSchemaBuilder();
         $discussionColumns = array_flip($schema->getColumnListing('discussions'));
@@ -80,11 +80,11 @@ class MigrateContentCommand extends AbstractCommand
         $userIds = $this->loadUserIdSet();
         $tagIds = $this->loadTagIdSet();
         $tagParents = $this->loadTagParentMap();
-        $this->info('  usuários no Flarum: '.count($userIds).', tags: '.count($tagIds));
+        $this->info('  users in Flarum: '.count($userIds).', tags: '.count($tagIds));
 
         $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
 
-        $this->info('  autolimpeza de conteúdo (discussions/posts/pivots)...');
+        $this->info('  self-cleaning content (discussions/posts/pivots)...');
         foreach (['post_mentions_user','post_mentions_post','post_mentions_tag','post_mentions_group',
                   'post_likes','post_reactions','post_anonymous_reactions','post_user','flags',
                   'mail_reply_posts','scheduled_posts','posts',
@@ -124,7 +124,7 @@ class MigrateContentCommand extends AbstractCommand
 
                 $title = Charset::fix((string) $trow['subject']);
                 if ($title === '') {
-                    $title = "Tópico {$tid}";
+                    $title = "Thread {$tid}";
                 }
 
                 $authorUid = (int) ($trow['uid'] ?? 0);
@@ -222,7 +222,7 @@ class MigrateContentCommand extends AbstractCommand
                 }
 
                 if ($threadsDone % 500 === 0) {
-                    $this->info("  {$threadsDone}/{$totalThreads} tópicos / {$postsDone} posts");
+                    $this->info("  {$threadsDone}/{$totalThreads} threads / {$postsDone} posts");
                 }
             }
 
@@ -238,10 +238,10 @@ class MigrateContentCommand extends AbstractCommand
             $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
         }
 
-        $this->info("Concluído.");
-        $this->info("  discussões inseridas: {$threadsDone}");
-        $this->info("  posts inseridos     : {$postsDone}");
-        $this->info("  tópicos pulados (fid sem tag): {$skippedThreads}");
+        $this->info("Done.");
+        $this->info("  discussions inserted: {$threadsDone}");
+        $this->info("  posts inserted      : {$postsDone}");
+        $this->info("  threads skipped (fid without tag): {$skippedThreads}");
 
         return 0;
     }

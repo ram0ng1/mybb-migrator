@@ -27,18 +27,18 @@ class FixUserMentionsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:fix-user-mentions')
-            ->setDescription('Detecta @username em posts e injeta USERMENTION para virar menção clicável.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Detects @username in posts and injects USERMENTION to turn it into a clickable mention.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
-        $this->info('Carregando mapa username -> user_id...');
+        $this->info('Loading username -> user_id map...');
         $userMap = [];
         foreach ($this->db->table('users')->select(['id', 'username'])->cursor() as $row) {
             $userMap[strtolower((string) $row->username)] = [
@@ -46,7 +46,7 @@ class FixUserMentionsCommand extends AbstractCommand
                 'username' => (string) $row->username,
             ];
         }
-        $this->info('  ' . count($userMap) . ' usernames carregados.');
+        $this->info('  ' . count($userMap) . ' usernames loaded.');
 
         $postsFixed = 0;
         $mentionsAdded = 0;
@@ -78,12 +78,12 @@ class FixUserMentionsCommand extends AbstractCommand
                     }
                 }
 
-                $this->info("  {$postsFixed} posts ajustados, {$mentionsAdded} menções");
+                $this->info("  {$postsFixed} posts fixed, {$mentionsAdded} mentions");
             });
 
-        $this->info('Concluído.');
-        $this->info("  posts ajustados : {$postsFixed}");
-        $this->info("  menções inseridas: {$mentionsAdded}");
+        $this->info('Done.');
+        $this->info("  posts fixed : {$postsFixed}");
+        $this->info("  mentions inserted: {$mentionsAdded}");
 
         return 0;
     }

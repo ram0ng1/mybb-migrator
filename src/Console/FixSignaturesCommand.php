@@ -27,14 +27,14 @@ class FixSignaturesCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:fix-signatures')
-            ->setDescription('Limpa users.bio (assinaturas) — strip BBCode literal, normaliza newlines.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Cleans users.bio (signatures) — strip literal BBCode, normalize newlines.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -54,11 +54,11 @@ class FixSignaturesCommand extends AbstractCommand
                         $total++;
                     }
                 }
-                $this->info("  bios ajustadas: {$total}");
+                $this->info("  bios fixed: {$total}");
             });
 
-        $this->info('Concluído.');
-        $this->info("  bios ajustadas : {$total}");
+        $this->info('Done.');
+        $this->info("  bios fixed : {$total}");
 
         return 0;
     }

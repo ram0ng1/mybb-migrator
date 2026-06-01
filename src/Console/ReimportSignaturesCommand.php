@@ -37,19 +37,19 @@ class ReimportSignaturesCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:reimport-signatures')
-            ->setDescription('Re-importa users.bio do MyBB com BBCode → XML s9e (preserva cor/bold/italic).')
-            ->addOption('mybb-host', null, InputOption::VALUE_REQUIRED, 'Host MySQL do MyBB.', '127.0.0.1')
-            ->addOption('mybb-db', null, InputOption::VALUE_REQUIRED, 'Database MyBB.', 'mybb')
-            ->addOption('mybb-user', null, InputOption::VALUE_REQUIRED, 'Usuário MySQL.', 'root')
-            ->addOption('mybb-pass', null, InputOption::VALUE_OPTIONAL, 'Senha MySQL.', '')
-            ->addOption('mybb-prefix', null, InputOption::VALUE_REQUIRED, 'Prefixo das tabelas.', 'dfsmybb_')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Re-imports users.bio from MyBB with BBCode → s9e XML (preserves color/bold/italic).')
+            ->addOption('mybb-host', null, InputOption::VALUE_REQUIRED, 'MyBB MySQL host.', '127.0.0.1')
+            ->addOption('mybb-db', null, InputOption::VALUE_REQUIRED, 'MyBB database.', 'mybb')
+            ->addOption('mybb-user', null, InputOption::VALUE_REQUIRED, 'MySQL user.', 'root')
+            ->addOption('mybb-pass', null, InputOption::VALUE_OPTIONAL, 'MySQL password.', '')
+            ->addOption('mybb-prefix', null, InputOption::VALUE_REQUIRED, 'Table prefix.', 'dfsmybb_')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -84,10 +84,10 @@ class ReimportSignaturesCommand extends AbstractCommand
 
         // MigrateUsersCommand preserva uid 1:1 como users.id. Buscamos só ids
         // que existem no Flarum pra ignorar usuários que não foram migrados.
-        $this->info('Carregando ids de usuários do Flarum …');
+        $this->info('Loading Flarum user ids …');
         $flarumIds = $this->db->table('users')->pluck('id')->all();
         $flarumIds = array_flip(array_map('intval', $flarumIds));
-        $this->info('  ' . count($flarumIds) . ' usuários no Flarum.');
+        $this->info('  ' . count($flarumIds) . ' users in Flarum.');
 
         $stmt = $mybb->prepare("SELECT uid, signature FROM `{$prefix}users` WHERE signature IS NOT NULL AND signature <> '' ORDER BY uid");
         $stmt->execute();
@@ -126,16 +126,16 @@ class ReimportSignaturesCommand extends AbstractCommand
             $updated++;
 
             if ($updated % 100 === 0) {
-                $this->info("  {$updated} bios re-importadas …");
+                $this->info("  {$updated} bios re-imported …");
             }
         }
 
-        $this->info('Concluído.');
-        $this->info("  re-importadas : {$updated}");
-        $this->info("  esvaziadas    : {$empty}");
-        $this->info("  ignoradas     : {$skipped}");
-        $this->info("  falharam      : {$failed}");
-        $this->info('Lembrete: fof-user-bio.allowFormatting está habilitado — bioHtml virá renderizado.');
+        $this->info('Done.');
+        $this->info("  re-imported : {$updated}");
+        $this->info("  emptied     : {$empty}");
+        $this->info("  skipped     : {$skipped}");
+        $this->info("  failed      : {$failed}");
+        $this->info('Reminder: fof-user-bio.allowFormatting is enabled — bioHtml will come rendered.');
 
         return 0;
     }

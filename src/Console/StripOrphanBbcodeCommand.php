@@ -28,21 +28,21 @@ class StripOrphanBbcodeCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:strip-orphan-bbcode')
-            ->setDescription('Remove marcadores BBCode literais órfãos (`[b]`, `[/color]`, etc.) que ficaram não parseados.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Remove orphan literal BBCode markers (`[b]`, `[/color]`, etc.) that were left unparsed.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
         $totalPosts = 0;
         $totalTitles = 0;
 
-        $this->info('Reparando posts.content...');
+        $this->info('Repairing posts.content...');
         $this->db->table('posts')
             ->where('content', 'LIKE', '%[%]%')
             ->orderBy('id')
@@ -56,10 +56,10 @@ class StripOrphanBbcodeCommand extends AbstractCommand
                         $totalPosts++;
                     }
                 }
-                $this->info("  posts ajustados: {$totalPosts}");
+                $this->info("  posts fixed: {$totalPosts}");
             });
 
-        $this->info('Reparando discussions.title...');
+        $this->info('Repairing discussions.title...');
         $this->db->table('discussions')
             ->where('title', 'LIKE', '%[%]%')
             ->orderBy('id')
@@ -73,12 +73,12 @@ class StripOrphanBbcodeCommand extends AbstractCommand
                         $totalTitles++;
                     }
                 }
-                $this->info("  títulos ajustados: {$totalTitles}");
+                $this->info("  titles fixed: {$totalTitles}");
             });
 
-        $this->info('Concluído.');
-        $this->info("  posts ajustados      : {$totalPosts}");
-        $this->info("  discussões ajustadas : {$totalTitles}");
+        $this->info('Done.');
+        $this->info("  posts fixed          : {$totalPosts}");
+        $this->info("  discussions fixed    : {$totalTitles}");
 
         return 0;
     }

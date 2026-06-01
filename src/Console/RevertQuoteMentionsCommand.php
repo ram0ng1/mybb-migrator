@@ -27,14 +27,14 @@ class RevertQuoteMentionsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:revert-quote-mentions')
-            ->setDescription('Remove POSTMENTIONs injetados antes de QUOTEs (deixa só a caixa do quote, evitando duplicação visual).')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Removes POSTMENTIONs injected before QUOTEs (leaves only the quote box, avoiding visual duplication).')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -54,11 +54,11 @@ class RevertQuoteMentionsCommand extends AbstractCommand
                         $totalFixed++;
                     }
                 }
-                $this->info("  {$totalFixed} posts limpos");
+                $this->info("  {$totalFixed} posts cleaned");
             });
 
-        $this->info('Concluído.');
-        $this->info("  posts limpos : {$totalFixed}");
+        $this->info('Done.');
+        $this->info("  posts cleaned : {$totalFixed}");
 
         return 0;
     }

@@ -30,15 +30,15 @@ class MigrateGroupsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:groups')
-            ->setDescription('Migra grupos customizados do MyBB (type=2, gid>=8) para o Flarum preservando os IDs.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Migrate custom MyBB groups (type=2, gid>=8) to Flarum while preserving IDs.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -63,7 +63,7 @@ class MigrateGroupsCommand extends AbstractCommand
                 $title = Charset::fix((string) $row['title']);
 
                 if ($title === '') {
-                    $title = "Grupo $gid";
+                    $title = "Group $gid";
                 }
 
                 $this->db->table('groups')->updateOrInsert(
@@ -77,13 +77,13 @@ class MigrateGroupsCommand extends AbstractCommand
                     ]
                 );
                 $inserted++;
-                $this->info("  grupo {$gid}: {$title}");
+                $this->info("  group {$gid}: {$title}");
             }
         } finally {
             $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
         }
 
-        $this->info("Grupos customizados migrados: {$inserted} (skipped gid<=4: {$skipped})");
+        $this->info("Custom groups migrated: {$inserted} (skipped gid<=4: {$skipped})");
 
         return 0;
     }

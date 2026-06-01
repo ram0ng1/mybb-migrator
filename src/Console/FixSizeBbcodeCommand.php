@@ -28,14 +28,14 @@ class FixSizeBbcodeCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:fix-size-bbcode')
-            ->setDescription('Converte [size=X]...[/size] literal para tags <SIZE> renderizáveis pelo flarum/bbcode.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Converts literal [size=X]...[/size] into <SIZE> tags renderable by flarum/bbcode.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -54,11 +54,11 @@ class FixSizeBbcodeCommand extends AbstractCommand
                         $totalFixed++;
                     }
                 }
-                $this->info("  {$totalFixed} posts ajustados");
+                $this->info("  {$totalFixed} posts fixed");
             });
 
-        $this->info('Concluído.');
-        $this->info("  posts ajustados : {$totalFixed}");
+        $this->info('Done.');
+        $this->info("  posts fixed : {$totalFixed}");
 
         return 0;
     }

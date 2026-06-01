@@ -86,15 +86,15 @@ class FixSmiliesCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:fix-smilies')
-            ->setDescription('Substitui smilies textuais do MyBB (:happy2:, :rolleyes:, etc.) por emojis Unicode.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Replaces MyBB text smilies (:happy2:, :rolleyes:, etc.) with Unicode emojis.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -109,7 +109,7 @@ class FixSmiliesCommand extends AbstractCommand
                 $codesInDb[$code] = true;
             }
         }
-        $this->info('Códigos no dfsmybb_smilies: ' . count($codesInDb));
+        $this->info('Codes in dfsmybb_smilies: ' . count($codesInDb));
 
         $map = self::DEFAULT_MAP;
         foreach (array_keys($codesInDb) as $code) {
@@ -125,7 +125,7 @@ class FixSmiliesCommand extends AbstractCommand
         $totalPosts = 0;
         $totalTitles = 0;
 
-        $this->info('Reparando posts.content...');
+        $this->info('Repairing posts.content...');
         $this->db->table('posts')
             ->orderBy('id')
             ->chunkById(500, function ($rows) use (&$totalPosts, $map, $codes) {
@@ -140,10 +140,10 @@ class FixSmiliesCommand extends AbstractCommand
                         $totalPosts++;
                     }
                 }
-                $this->info("  posts ajustados: {$totalPosts}");
+                $this->info("  posts fixed: {$totalPosts}");
             });
 
-        $this->info('Reparando discussions.title...');
+        $this->info('Repairing discussions.title...');
         $this->db->table('discussions')
             ->orderBy('id')
             ->chunkById(1000, function ($rows) use (&$totalTitles, $map, $codes) {
@@ -158,12 +158,12 @@ class FixSmiliesCommand extends AbstractCommand
                         $totalTitles++;
                     }
                 }
-                $this->info("  títulos ajustados: {$totalTitles}");
+                $this->info("  titles fixed: {$totalTitles}");
             });
 
-        $this->info('Concluído.');
-        $this->info("  posts ajustados      : {$totalPosts}");
-        $this->info("  discussões ajustadas : {$totalTitles}");
+        $this->info('Done.');
+        $this->info("  posts fixed        : {$totalPosts}");
+        $this->info("  discussions fixed  : {$totalTitles}");
 
         return 0;
     }

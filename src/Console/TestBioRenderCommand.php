@@ -26,8 +26,8 @@ class TestBioRenderCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:test-bio-render')
-            ->setDescription('Renderiza users.bio (XML s9e) e mostra o HTML resultante.')
-            ->addArgument('user', InputArgument::REQUIRED, 'ID ou username do usuário.');
+            ->setDescription('Renders users.bio (s9e XML) and shows the resulting HTML.')
+            ->addArgument('user', InputArgument::REQUIRED, 'User ID or username.');
     }
 
     protected function fire(): int
@@ -38,7 +38,7 @@ class TestBioRenderCommand extends AbstractCommand
             : $this->db->table('users')->where('username', $arg)->first();
 
         if (! $row) {
-            $this->error("Usuário {$arg} não encontrado.");
+            $this->error("User {$arg} not found.");
             return 1;
         }
 
@@ -51,7 +51,7 @@ class TestBioRenderCommand extends AbstractCommand
         // pode não estar habilitada e o binding só existe nesse caso. Resolver
         // no construtor derrubaria todo o CLI do Flarum.
         if (! $this->container->bound('fof-user-bio.formatter')) {
-            $this->error('A extensão fof/user-bio não está habilitada — não há formatter de bio disponível.');
+            $this->error('The fof/user-bio extension is not enabled — no bio formatter available.');
             return 1;
         }
 

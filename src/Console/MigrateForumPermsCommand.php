@@ -36,15 +36,15 @@ class MigrateForumPermsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:forum-perms')
-            ->setDescription('Migra restrições por fórum do MyBB (forumpermissions) para is_restricted + tag{fid}.viewForum nas tags do Flarum.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Migrate MyBB per-forum restrictions (forumpermissions) to is_restricted + tag{fid}.viewForum on Flarum tags.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -117,9 +117,9 @@ class MigrateForumPermsCommand extends AbstractCommand
             }
         }
 
-        $this->info('Concluído.');
-        $this->info("  tags restritas         : {$restrictedTags}");
-        $this->info("  permissões concedidas  : {$permsGranted}");
+        $this->info('Done.');
+        $this->info("  restricted tags        : {$restrictedTags}");
+        $this->info("  permissions granted    : {$permsGranted}");
 
         return 0;
     }

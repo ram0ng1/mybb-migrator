@@ -33,15 +33,15 @@ class FixTapatalkEmojiCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:fix-tapatalk-emoji')
-            ->setDescription('Re-corrige emojis Tapatalk migrados (substitui o char errado pelo correto nos posts).')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Aplica de fato.');
+            ->setDescription('Re-fixes migrated Tapatalk emojis (replaces the wrong char with the correct one in posts).')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Actually apply the changes.');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (TapatalkEmoji::MAP === []) {
-            $this->error('TapatalkEmoji::MAP está vazio — adicione mapeamentos antes de rodar.');
+            $this->error('TapatalkEmoji::MAP is empty — add mappings before running.');
             return 1;
         }
 
@@ -65,7 +65,7 @@ class FixTapatalkEmojiCommand extends AbstractCommand
             }
 
             if ($pids === []) {
-                $this->info("emoji{$n}: nenhum post de origem.");
+                $this->info("emoji{$n}: no source posts.");
                 continue;
             }
 
@@ -87,11 +87,11 @@ class FixTapatalkEmojiCommand extends AbstractCommand
                 }
             }
 
-            $this->info("emoji{$n} ({$legacy} → {$correct}): {$fixed} posts" . ($force ? ' corrigidos' : ' (dry-run)'));
+            $this->info("emoji{$n} ({$legacy} → {$correct}): {$fixed} posts" . ($force ? ' fixed' : ' (dry-run)'));
             $totalFixed += $fixed;
         }
 
-        $this->info(($force ? '[APLICADO]' : '[DRY-RUN, use --force]') . " total={$totalFixed}");
+        $this->info(($force ? '[APPLIED]' : '[DRY-RUN, use --force]') . " total={$totalFixed}");
         return 0;
     }
 }

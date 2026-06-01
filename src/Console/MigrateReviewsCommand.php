@@ -34,20 +34,20 @@ class MigrateReviewsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:reviews')
-            ->setDescription('Migra o Community Reviews do MyBB para huseyinfiliz/traderfeedback.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Migrate MyBB Community Reviews to huseyinfiliz/traderfeedback.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
         if (! $this->db->getSchemaBuilder()->hasTable('tfb_products')) {
-            $this->error('Tabelas de reviews não existem. Rode `php flarum migrate` na extensão traderfeedback primeiro.');
+            $this->error('Review tables do not exist. Run `php flarum migrate` for the traderfeedback extension first.');
             return 1;
         }
 
@@ -55,7 +55,7 @@ class MigrateReviewsCommand extends AbstractCommand
         $p = $mybb->prefix();
 
         $userIds = $this->loadIdSet('users');
-        $this->info('Usuários no Flarum: ' . count($userIds));
+        $this->info('Users in Flarum: ' . count($userIds));
 
         $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
 
@@ -70,7 +70,7 @@ class MigrateReviewsCommand extends AbstractCommand
                     'position' => (int) $r['order'],
                 ]);
             }
-            $this->info('Categorias: ' . count($cats));
+            $this->info('Categories: ' . count($cats));
 
             // 2) Campos
             $fields = [];
@@ -88,7 +88,7 @@ class MigrateReviewsCommand extends AbstractCommand
                 ];
             }
             $this->flush('tfb_review_fields', $batch);
-            $this->info('Campos: ' . count($fields));
+            $this->info('Fields: ' . count($fields));
 
             // 3) Produtos
             $products = [];
@@ -116,7 +116,7 @@ class MigrateReviewsCommand extends AbstractCommand
                 }
             }
             $this->flush('tfb_products', $batch);
-            $this->info('Produtos: ' . count($products));
+            $this->info('Products: ' . count($products));
 
             // merchants map: review_id => user_id
             $merchants = [];
@@ -175,7 +175,7 @@ class MigrateReviewsCommand extends AbstractCommand
                 }
             }
             $this->flush('tfb_review_field_ratings', $batch);
-            $this->info('Notas por campo: ' . $rfCount);
+            $this->info('Field ratings: ' . $rfCount);
 
             // 6) Fotos
             $batch = [];
@@ -198,7 +198,7 @@ class MigrateReviewsCommand extends AbstractCommand
                 }
             }
             $this->flush('tfb_review_photos', $batch);
-            $this->info('Fotos: ' . $photoCount);
+            $this->info('Photos: ' . $photoCount);
 
             // 7) Comentários
             $batch = [];
@@ -225,13 +225,13 @@ class MigrateReviewsCommand extends AbstractCommand
                 }
             }
             $this->flush('tfb_review_comments', $batch);
-            $this->info('Comentários: ' . $commentCount);
+            $this->info('Comments: ' . $commentCount);
         } finally {
             $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
         }
 
         $this->recomputeRatings();
-        $this->info('Concluído.');
+        $this->info('Done.');
 
         return 0;
     }
@@ -261,7 +261,7 @@ class MigrateReviewsCommand extends AbstractCommand
                 p.cached_rating = COALESCE(r.avg_rating, p.cached_rating)
         ');
 
-        $this->info('Ratings recalculados (reviews + produtos).');
+        $this->info('Ratings recomputed (reviews + products).');
     }
 
     /**

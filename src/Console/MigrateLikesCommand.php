@@ -31,15 +31,15 @@ class MigrateLikesCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:likes')
-            ->setDescription('Migra as curtidas do MyBB (dfsmybb_post_likes) para flarum/likes.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Migrate MyBB likes (dfsmybb_post_likes) to flarum/likes.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -57,15 +57,15 @@ class MigrateLikesCommand extends AbstractCommand
         $dateColumn = self::firstAvailable($columns, ['like_date', 'dateline', 'liked_at', 'created_at']);
 
         if ($postColumn === null || $userColumn === null) {
-            $this->error("Tabela {$table} não tem colunas post/user reconhecidas. Colunas vistas: " . implode(',', array_keys($columns)));
+            $this->error("Table {$table} has no recognized post/user columns. Columns seen: " . implode(',', array_keys($columns)));
             return 1;
         }
 
-        $this->info("Colunas detectadas: post={$postColumn}, user={$userColumn}, date=" . ($dateColumn ?? '(nenhuma)'));
+        $this->info("Detected columns: post={$postColumn}, user={$userColumn}, date=" . ($dateColumn ?? '(none)'));
 
         $dateSelect = $dateColumn !== null ? "{$dateColumn} AS ts" : '0 AS ts';
         $total = (int) $mybb->scalar("SELECT COUNT(*) FROM {$table}");
-        $this->info("Curtidas a migrar: {$total}");
+        $this->info("Likes to migrate: {$total}");
 
         $this->db->table('post_likes')->truncate();
         $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
@@ -114,7 +114,7 @@ class MigrateLikesCommand extends AbstractCommand
             $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
         }
 
-        $this->info("Concluído. inseridas={$inserted}, puladas={$skipped}");
+        $this->info("Done. inserted={$inserted}, skipped={$skipped}");
         return 0;
     }
 

@@ -29,15 +29,15 @@ class MigrateSubscriptionsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:subscriptions')
-            ->setDescription('Migra assinaturas de tópicos e fóruns do MyBB para flarum/subscriptions.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Migrate MyBB thread and forum subscriptions to flarum/subscriptions.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -113,15 +113,15 @@ class MigrateSubscriptionsCommand extends AbstractCommand
                     $forumInserted += count($batch);
                 }
             } else {
-                $this->info('  tag_user.subscription não existe — assinaturas de fórum não foram migradas.');
+                $this->info('  tag_user.subscription does not exist — forum subscriptions were not migrated.');
             }
         } finally {
             $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
         }
 
-        $this->info("Concluído.");
-        $this->info("  assinaturas de tópico: inseridas={$threadInserted}, puladas={$threadSkipped}");
-        $this->info("  assinaturas de fórum : inseridas={$forumInserted}, puladas={$forumSkipped}");
+        $this->info("Done.");
+        $this->info("  thread subscriptions: inserted={$threadInserted}, skipped={$threadSkipped}");
+        $this->info("  forum subscriptions : inserted={$forumInserted}, skipped={$forumSkipped}");
 
         return 0;
     }

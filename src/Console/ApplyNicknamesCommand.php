@@ -33,15 +33,15 @@ class ApplyNicknamesCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:apply-nicknames')
-            ->setDescription('Promove old_username → nickname e gera slug kebab-case como username.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.')
-            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Mostra o que seria feito sem alterar nada.');
+            ->setDescription('Promotes old_username → nickname and generates a kebab-case slug as username.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview changes without writing.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force') && ! $this->input->getOption('dry-run')) {
-            $this->error('Rode com --force ou --dry-run.');
+            $this->error('Run with --force or --dry-run.');
             return 1;
         }
 
@@ -58,7 +58,7 @@ class ApplyNicknamesCommand extends AbstractCommand
             ->orderBy('id')
             ->get();
 
-        $this->info('Renames históricos a processar: ' . $renames->count());
+        $this->info('Historical renames to process: ' . $renames->count());
 
         // Map p/ Fase 2: SLUG_FIX_USERNAMES → ORIGINAL_USERNAME (display)
         //               SLUG_FIX_USERNAMES → KEBAB_SLUG       (url slug)
@@ -115,24 +115,24 @@ class ApplyNicknamesCommand extends AbstractCommand
 
             $updated++;
             if ($updated % 100 === 0) {
-                $this->info("  {$updated} users mapeados…");
+                $this->info("  {$updated} users mapped…");
             }
         }
 
-        $this->info("Fase 1: {$updated} usuários processados.");
+        $this->info("Phase 1: {$updated} users processed.");
 
         if ($dryRun) {
-            $this->info('(dry-run — fim)');
+            $this->info('(dry-run — end)');
             return 0;
         }
 
         if (count($strtr) === 0) {
-            $this->info('Nada a substituir em posts.');
+            $this->info('Nothing to replace in posts.');
             return 0;
         }
 
         // ── Fase 2: passa pelos posts UMA vez aplicando o strtr inteiro.
-        $this->info('Fase 2: re-escrevendo refs em posts.content…');
+        $this->info('Phase 2: rewriting refs in posts.content…');
 
         // Filtro: posts contendo qualquer um dos fixSlugs.
         $likeClauses = [];
@@ -169,10 +169,10 @@ class ApplyNicknamesCommand extends AbstractCommand
             $this->info("  chunk " . (intdiv($i, $chunkSize) + 1) . ": scanned={$totalScanned} updated={$totalUpdated}");
         }
 
-        $this->info('Concluído.');
+        $this->info('Done.');
         $this->info("  users           : {$updated}");
-        $this->info("  posts varridos  : {$totalScanned}");
-        $this->info("  posts atualizados: {$totalUpdated}");
+        $this->info("  posts scanned   : {$totalScanned}");
+        $this->info("  posts updated   : {$totalUpdated}");
 
         return 0;
     }

@@ -30,15 +30,15 @@ class FixUsernamesCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:fix-usernames')
-            ->setDescription('Remove espaços / chars inválidos de users.username (e atualiza referências em posts em batch).')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.')
-            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Mostra o que seria feito sem alterar nada.');
+            ->setDescription('Removes spaces / invalid chars from users.username (and updates references in posts in batch).')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview changes without writing.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force') && ! $this->input->getOption('dry-run')) {
-            $this->error('Rode com --force ou --dry-run.');
+            $this->error('Run with --force or --dry-run.');
             return 1;
         }
 
@@ -61,7 +61,7 @@ class FixUsernamesCommand extends AbstractCommand
             ->orderBy('id')
             ->get();
 
-        $this->info('Usuários a corrigir: ' . $candidates->count());
+        $this->info('Users to fix: ' . $candidates->count());
 
         // ── Fase 1: renomeia users, monta o map [oldXmlEscaped => newXmlEscaped]
         // pra Fase 2 fazer strtr eficiente.
@@ -112,14 +112,14 @@ class FixUsernamesCommand extends AbstractCommand
 
             $alreadyRenamed++;
             if ($alreadyRenamed % 100 === 0) {
-                $this->info("  {$alreadyRenamed} usernames renomeados…");
+                $this->info("  {$alreadyRenamed} usernames renamed…");
             }
         }
 
-        $this->info("Fase 1 concluída: {$alreadyRenamed} renomeados, {$skipped} ignorados.");
+        $this->info("Phase 1 done: {$alreadyRenamed} renamed, {$skipped} skipped.");
 
         if ($dryRun) {
-            $this->info('(dry-run — nenhuma alteração persistida)');
+            $this->info('(dry-run — no changes persisted)');
             return 0;
         }
 
@@ -132,14 +132,14 @@ class FixUsernamesCommand extends AbstractCommand
         }
 
         if (count($renameMap) === 0) {
-            $this->info('Nenhuma referência em posts a atualizar.');
+            $this->info('No references in posts to update.');
             return 0;
         }
 
         // ── Fase 2: passa pelos posts UMA vez, fazendo strtr com TODOS os
         // mapeamentos. Filtra com LIKE (OR) só pra reduzir o universo —
         // posts.content é o gargalo.
-        $this->info('Fase 2: atualizando referências em posts.content…');
+        $this->info('Phase 2: updating references in posts.content…');
 
         // strtr map: cada entrada vira `displayname="OLD" → displayname="NEW"`,
         // `author="OLD" → author="NEW"`, `username="OLD" → username="NEW"`.
@@ -160,7 +160,7 @@ class FixUsernamesCommand extends AbstractCommand
         $total = (int) $this->db->table('posts')
             ->whereRaw('(' . implode(' OR ', $likeClauses) . ')', $bindings)
             ->count();
-        $this->info("Posts candidatos: {$total}");
+        $this->info("Candidate posts: {$total}");
 
         $updated = 0;
         $scanned = 0;
@@ -197,11 +197,11 @@ class FixUsernamesCommand extends AbstractCommand
             $flush($batch);
         }
 
-        $this->info('Concluído.');
-        $this->info("  renomeados        : {$alreadyRenamed}");
-        $this->info("  ignorados         : {$skipped}");
-        $this->info("  posts varridos    : {$scanned}");
-        $this->info("  posts atualizados : {$updated}");
+        $this->info('Done.');
+        $this->info("  renamed           : {$alreadyRenamed}");
+        $this->info("  skipped           : {$skipped}");
+        $this->info("  posts scanned     : {$scanned}");
+        $this->info("  posts updated     : {$updated}");
 
         return 0;
     }

@@ -17,12 +17,12 @@ trait MybbConnectionOptions
     protected function addMybbConnectionOptions(): void
     {
         $this
-            ->addOption('host', null, InputOption::VALUE_REQUIRED, 'Host do banco MyBB', null)
-            ->addOption('port', null, InputOption::VALUE_REQUIRED, 'Porta do banco MyBB', null)
-            ->addOption('user', 'u', InputOption::VALUE_REQUIRED, 'Usuário do banco MyBB', null)
-            ->addOption('password', 'p', InputOption::VALUE_REQUIRED, 'Senha do banco MyBB', null)
-            ->addOption('db', 'd', InputOption::VALUE_REQUIRED, 'Nome do banco MyBB', null)
-            ->addOption('prefix', null, InputOption::VALUE_REQUIRED, 'Prefixo das tabelas MyBB', null);
+            ->addOption('host', null, InputOption::VALUE_REQUIRED, 'MyBB database host', null)
+            ->addOption('port', null, InputOption::VALUE_REQUIRED, 'MyBB database port', null)
+            ->addOption('user', 'u', InputOption::VALUE_REQUIRED, 'MyBB database user', null)
+            ->addOption('password', 'p', InputOption::VALUE_REQUIRED, 'MyBB database password', null)
+            ->addOption('db', 'd', InputOption::VALUE_REQUIRED, 'MyBB database name', null)
+            ->addOption('prefix', null, InputOption::VALUE_REQUIRED, 'MyBB table prefix', null);
     }
 
     protected function buildMybbDatabase(SettingsRepositoryInterface $settings): MybbDatabase

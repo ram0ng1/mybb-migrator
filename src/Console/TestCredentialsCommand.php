@@ -31,15 +31,15 @@ class TestCredentialsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:test-credentials')
-            ->setDescription('Gera senhas de teste para ramon + 5 usuários (1 por algoritmo) e devolve os pares (usuário, senha).')
-            ->addOption('username', null, InputOption::VALUE_REQUIRED, 'Username específico a incluir além dos 5 algoritmos.', 'ramon')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.');
+            ->setDescription('Generates test passwords for ramon + 5 users (1 per algorithm) and returns the (user, password) pairs.')
+            ->addOption('username', null, InputOption::VALUE_REQUIRED, 'Specific username to include in addition to the 5 algorithms.', 'ramon')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
@@ -68,7 +68,7 @@ class TestCredentialsCommand extends AbstractCommand
                 ->first();
 
             if ($row === null) {
-                $this->info("  (sem usuário disponível para algoritmo '{$algorithm}' — pulado)");
+                $this->info("  (no user available for algorithm '{$algorithm}' — skipped)");
                 continue;
             }
 
@@ -76,15 +76,15 @@ class TestCredentialsCommand extends AbstractCommand
         }
 
         if ($selected === []) {
-            $this->error('Nenhum usuário elegível encontrado em mybb_legacy_passwords (rodou mybb:users?).');
+            $this->error('No eligible user found in mybb_legacy_passwords (did you run mybb:users?).');
             return 1;
         }
 
         $this->info('');
         $this->info('==============================================================');
-        $this->info(' CREDENCIAIS DE TESTE — SOBRESCREVEM A SENHA APENAS NESTES USUÁRIOS');
+        $this->info(' TEST CREDENTIALS — OVERWRITE THE PASSWORD FOR THESE USERS ONLY');
         $this->info('==============================================================');
-        $this->info(sprintf(' %-20s %-16s %s', 'USERNAME', 'ALGORITMO', 'SENHA DE TESTE'));
+        $this->info(sprintf(' %-20s %-16s %s', 'USERNAME', 'ALGORITHM', 'TEST PASSWORD'));
         $this->info(' ------------------------------------------------------------');
 
         foreach ($selected as $userId => $info) {
@@ -105,9 +105,9 @@ class TestCredentialsCommand extends AbstractCommand
         }
 
         $this->info(' ------------------------------------------------------------');
-        $this->info(' Use essas credenciais para validar o login no Flarum.');
-        $this->info(' No primeiro login bem-sucedido o verificador re-hasheia para');
-        $this->info(' bcrypt do Flarum e apaga a linha companheira.');
+        $this->info(' Use these credentials to validate login in Flarum.');
+        $this->info(' On the first successful login the verifier re-hashes to');
+        $this->info(' Flarum bcrypt and deletes the companion row.');
         $this->info('==============================================================');
 
         return 0;

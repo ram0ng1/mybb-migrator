@@ -33,26 +33,26 @@ class MigrateAvatarsCommand extends AbstractCommand
     {
         $this
             ->setName('mybb:avatars')
-            ->setDescription('Faz backfill do users.avatar_url para os usuários migrados, usando o basename do arquivo do MyBB.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirma execução.')
-            ->addOption('skip-file-check', null, InputOption::VALUE_NONE, 'Não checa se o arquivo existe em public/assets/avatars.');
+            ->setDescription('Backfill users.avatar_url for migrated users, using the basename of the MyBB file.')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.')
+            ->addOption('skip-file-check', null, InputOption::VALUE_NONE, 'Do not check whether the file exists in public/assets/avatars.');
         $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
     {
         if (! $this->input->getOption('force')) {
-            $this->error('Rode com --force.');
+            $this->error('Run with --force.');
             return 1;
         }
 
         $skipFileCheck = (bool) $this->input->getOption('skip-file-check');
         $avatarsDir = $this->paths->public . '/assets/avatars';
 
-        $this->info("Diretório de avatares: {$avatarsDir}");
+        $this->info("Avatars directory: {$avatarsDir}");
 
         if (! $skipFileCheck && ! is_dir($avatarsDir)) {
-            $this->error("Diretório {$avatarsDir} não existe. Rode com --skip-file-check para ignorar.");
+            $this->error("Directory {$avatarsDir} does not exist. Run with --skip-file-check to ignore.");
             return 1;
         }
 
@@ -94,15 +94,15 @@ class MigrateAvatarsCommand extends AbstractCommand
             $applied++;
 
             if ($applied % 200 === 0) {
-                $this->info("  {$applied} apontados...");
+                $this->info("  {$applied} pointed...");
             }
         }
 
-        $this->info('Concluído.');
-        $this->info("  avatares apontados        : {$applied}");
-        $this->info("  user MyBB sem flarum user : {$missingUser}");
-        $this->info("  arquivo ausente no disco  : {$missingFile}");
-        $this->info("  basename inválido         : {$invalidName}");
+        $this->info('Done.');
+        $this->info("  avatars pointed           : {$applied}");
+        $this->info("  MyBB user without Flarum user : {$missingUser}");
+        $this->info("  file missing on disk      : {$missingFile}");
+        $this->info("  invalid basename          : {$invalidName}");
 
         return 0;
     }
