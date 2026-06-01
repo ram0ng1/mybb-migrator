@@ -4,7 +4,6 @@ namespace Ramon\MybbMigrator\Console;
 
 use Flarum\Console\AbstractCommand;
 use Flarum\Formatter\Formatter;
-use FoF\UserBio\Formatter\UserBioFormatter;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\ConnectionInterface;
 use PDO;

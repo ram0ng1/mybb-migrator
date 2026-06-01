@@ -3,7 +3,7 @@
 namespace Ramon\MybbMigrator\Console;
 
 use Flarum\Console\AbstractCommand;
-use FoF\UserBio\Formatter\UserBioFormatter;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\ConnectionInterface;
 use Symfony\Component\Console\Input\InputArgument;
 
@@ -17,7 +17,7 @@ class TestBioRenderCommand extends AbstractCommand
 {
     public function __construct(
         protected ConnectionInterface $db,
-        protected UserBioFormatter $formatter,
+        protected Container $container,
     ) {
         parent::__construct();
     }
@@ -47,8 +47,18 @@ class TestBioRenderCommand extends AbstractCommand
         fwrite(STDOUT, 'BIO XML (' . strlen($bio) . " bytes):\n");
         fwrite(STDOUT, substr($bio, 0, 800) . "\n\n---\n");
 
+        // Resolve o formatter de bio preguiçosamente: a extensão fof/user-bio
+        // pode não estar habilitada e o binding só existe nesse caso. Resolver
+        // no construtor derrubaria todo o CLI do Flarum.
+        if (! $this->container->bound('fof-user-bio.formatter')) {
+            $this->error('A extensão fof/user-bio não está habilitada — não há formatter de bio disponível.');
+            return 1;
+        }
+
+        $formatter = $this->container->make('fof-user-bio.formatter');
+
         try {
-            $html = $this->formatter->render($bio);
+            $html = $formatter->render($bio);
             fwrite(STDOUT, "BIO HTML:\n");
             fwrite(STDOUT, $html . "\n");
         } catch (\Throwable $e) {
