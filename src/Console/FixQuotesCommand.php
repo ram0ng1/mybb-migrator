@@ -7,13 +7,13 @@ use Illuminate\Database\ConnectionInterface;
 use Symfony\Component\Console\Input\InputOption;
 
 /**
- * Injeta uma tag POSTMENTION antes de cada QUOTE existente cujo `<s>` original
- * contém o atributo `pid='N'` do MyBB. Isso transforma cada citação migrada
- * em uma resposta clicável (com link "Foi respondido por" e mention do autor)
- * sem precisar re-processar o BBCode dos posts.
+ * Injects a POSTMENTION tag before every existing QUOTE whose original `<s>`
+ * carries MyBB's `pid='N'` attribute. This turns each migrated quote into a
+ * clickable reply (with a "In reply to" link and a mention of the author)
+ * without having to re-process the posts' BBCode.
  *
- * Também popula `post_mentions_post` para que o índice de menções fique
- * consistente.
+ * It also populates `post_mentions_post` so the mentions index stays
+ * consistent.
  */
 class FixQuotesCommand extends AbstractCommand
 {
@@ -37,24 +37,36 @@ class FixQuotesCommand extends AbstractCommand
             return 1;
         }
 
-        $this->info('Loading pid -> (number, discussion_id) map from Flarum posts...');
-        $postMap = [];
-        foreach ($this->db->table('posts')->select(['id', 'number', 'discussion_id'])->cursor() as $row) {
-            $postMap[(int) $row->id] = [
-                'number' => (int) $row->number,
-                'discussion_id' => (int) $row->discussion_id,
-            ];
-        }
-        $this->info('  ' . count($postMap) . ' posts mapped.');
+        $this->info('Fixing migrated QUOTEs (pid -> POSTMENTION)...');
+        $this->verbose('Verbose output on — use -v / -vv / -vvv for more detail.');
 
         $totalPostsFixed = 0;
         $totalMentions = 0;
+        $chunkNum = 0;
 
         $this->db->table('posts')
             ->where('content', 'LIKE', '%pid=%')
             ->orderBy('id')
-            ->chunkById(500, function ($rows) use (&$totalPostsFixed, &$totalMentions, $postMap) {
+            ->chunkById(500, function ($rows) use (&$totalPostsFixed, &$totalMentions, &$chunkNum) {
+                $chunkNum++;
+                $firstId = (int) $rows->first()->id;
+                $lastId = (int) $rows->last()->id;
+
+                // Load only the posts quoted in this chunk, instead of the whole
+                // `posts` table, keeping memory usage bounded.
+                $postMap = $this->loadPostMapFor($rows);
+
+                $this->verbose(sprintf(
+                    '[chunk %d] ids %d..%d — %d posts, %d quoted pids loaded',
+                    $chunkNum,
+                    $firstId,
+                    $lastId,
+                    $rows->count(),
+                    count($postMap)
+                ));
+
                 $mentionBatch = [];
+                $chunkPostsFixed = 0;
 
                 foreach ($rows as $row) {
                     $old = (string) $row->content;
@@ -63,14 +75,30 @@ class FixQuotesCommand extends AbstractCommand
                     if ($new !== $old) {
                         $this->db->table('posts')->where('id', $row->id)->update(['content' => $new]);
                         $totalPostsFixed++;
+                        $chunkPostsFixed++;
 
+                        $rowMentions = 0;
                         foreach ($pids as $pid) {
                             if (! isset($postMap[$pid])) {
                                 continue;
                             }
                             $mentionBatch[] = ['post_id' => (int) $row->id, 'mentions_post_id' => $pid];
                             $totalMentions++;
+                            $rowMentions++;
                         }
+
+                        $this->veryVerbose(sprintf(
+                            '    post #%d fixed — %d mention(s) [pids: %s]',
+                            (int) $row->id,
+                            $rowMentions,
+                            implode(', ', $pids) ?: '-'
+                        ));
+
+                        // -vvv: dump the raw before/after XML so each migration
+                        // can be inspected verbatim.
+                        $this->debug(sprintf('    ── post #%d raw ──', (int) $row->id));
+                        $this->debug('    BEFORE: ' . $old);
+                        $this->debug('    AFTER : ' . $new);
                     }
                 }
 
@@ -81,19 +109,51 @@ class FixQuotesCommand extends AbstractCommand
                 }
 
                 $this->info("  {$totalPostsFixed} posts fixed, {$totalMentions} mentions in index");
+                $this->debug(sprintf(
+                    '[chunk %d] +%d posts in this chunk | memory: %.1f MB (peak %.1f MB)',
+                    $chunkNum,
+                    $chunkPostsFixed,
+                    memory_get_usage(true) / 1048576,
+                    memory_get_peak_usage(true) / 1048576
+                ));
             });
 
         $this->info('Done.');
         $this->info("  posts fixed            : {$totalPostsFixed}");
-        $this->info("  mentions inserted       : {$totalMentions}");
+        $this->info("  mentions inserted      : {$totalMentions}");
+        $this->debug(sprintf('  peak memory            : %.1f MB', memory_get_peak_usage(true) / 1048576));
 
         return 0;
     }
 
+    /** Shown only with -v (or higher). */
+    private function verbose(string $message): void
+    {
+        if ($this->output->isVerbose()) {
+            $this->output->writeln($message);
+        }
+    }
+
+    /** Shown only with -vv (or higher). */
+    private function veryVerbose(string $message): void
+    {
+        if ($this->output->isVeryVerbose()) {
+            $this->output->writeln($message);
+        }
+    }
+
+    /** Shown only with -vvv. */
+    private function debug(string $message): void
+    {
+        if ($this->output->isDebug()) {
+            $this->output->writeln($message);
+        }
+    }
+
     /**
-     * Idempotente: primeiro remove POSTMENTIONs antigas que foram injetadas
-     * sem o atributo `number` (quebradas), depois injeta a versão correta
-     * com displayname, id, number e discussionid.
+     * Idempotent: first strips old POSTMENTIONs that were injected without the
+     * `number` attribute (broken ones), then injects the correct version with
+     * displayname, id, number and discussionid.
      *
      * @param array<int, array{number:int, discussion_id:int}> $postMap
      * @return array{0: string, 1: array<int, int>}
@@ -143,14 +203,56 @@ class FixQuotesCommand extends AbstractCommand
     }
 
     /**
-     * @return array<int, bool>
+     * Builds the pid -> (number, discussion_id) map only for the pids quoted in
+     * the given set of posts. This keeps memory bounded to the current chunk,
+     * instead of loading the whole `posts` table.
+     *
+     * @param iterable<object> $rows
+     * @return array<int, array{number:int, discussion_id:int}>
      */
-    private function loadIdSet(string $table): array
+    private function loadPostMapFor(iterable $rows): array
     {
-        $set = [];
-        foreach ($this->db->table($table)->select('id')->cursor() as $row) {
-            $set[(int) $row->id] = true;
+        $pids = [];
+        foreach ($rows as $row) {
+            foreach (self::extractPids((string) $row->content) as $pid) {
+                $pids[$pid] = true;
+            }
         }
-        return $set;
+
+        $postMap = [];
+        foreach (array_chunk(array_keys($pids), 1000) as $idChunk) {
+            foreach (
+                $this->db->table('posts')
+                    ->whereIn('id', $idChunk)
+                    ->select(['id', 'number', 'discussion_id'])
+                    ->cursor() as $p
+            ) {
+                $postMap[(int) $p->id] = [
+                    'number' => (int) $p->number,
+                    'discussion_id' => (int) $p->discussion_id,
+                ];
+            }
+        }
+
+        return $postMap;
+    }
+
+    /**
+     * Extracts the pids referenced by a post's migrated QUOTEs, using the same
+     * pattern that `inject()` recognizes.
+     *
+     * @return array<int, int>
+     */
+    public static function extractPids(string $xml): array
+    {
+        if (! preg_match_all(
+            '#<QUOTE author="[^"]+"><s>\[quote=[^\]]*?\bpid=[\'"](\d+)[\'"]#i',
+            $xml,
+            $m
+        )) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map('intval', $m[1])));
     }
 }
