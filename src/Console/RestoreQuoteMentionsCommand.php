@@ -37,23 +37,17 @@ class RestoreQuoteMentionsCommand extends AbstractCommand
             return 1;
         }
 
-        $this->info('Loading pid -> (number, discussion_id) map...');
-        $postMap = [];
-        foreach ($this->db->table('posts')->select(['id', 'number', 'discussion_id'])->cursor() as $row) {
-            $postMap[(int) $row->id] = [
-                'number' => (int) $row->number,
-                'discussion_id' => (int) $row->discussion_id,
-            ];
-        }
-        $this->info('  ' . count($postMap) . ' posts mapped.');
-
         $totalFixed = 0;
         $totalMentions = 0;
 
         $this->db->table('posts')
             ->where('content', 'LIKE', '%pid=%')
             ->orderBy('id')
-            ->chunkById(500, function ($rows) use (&$totalFixed, &$totalMentions, $postMap) {
+            ->chunkById(500, function ($rows) use (&$totalFixed, &$totalMentions) {
+                // Load only the posts quoted in this chunk, instead of the whole
+                // `posts` table, keeping memory usage bounded.
+                $postMap = $this->loadPostMapFor($rows);
+
                 $mentionBatch = [];
 
                 foreach ($rows as $row) {
@@ -88,6 +82,60 @@ class RestoreQuoteMentionsCommand extends AbstractCommand
         $this->info("  mentions inserted       : {$totalMentions}");
 
         return 0;
+    }
+
+    /**
+     * Builds the pid -> (number, discussion_id) map only for the pids quoted in
+     * the given set of posts. This keeps memory bounded to the current chunk,
+     * instead of loading the whole `posts` table.
+     *
+     * @param iterable<object> $rows
+     * @return array<int, array{number:int, discussion_id:int}>
+     */
+    private function loadPostMapFor(iterable $rows): array
+    {
+        $pids = [];
+        foreach ($rows as $row) {
+            foreach (self::extractPids((string) $row->content) as $pid) {
+                $pids[$pid] = true;
+            }
+        }
+
+        $postMap = [];
+        foreach (array_chunk(array_keys($pids), 1000) as $idChunk) {
+            foreach (
+                $this->db->table('posts')
+                    ->whereIn('id', $idChunk)
+                    ->select(['id', 'number', 'discussion_id'])
+                    ->cursor() as $p
+            ) {
+                $postMap[(int) $p->id] = [
+                    'number' => (int) $p->number,
+                    'discussion_id' => (int) $p->discussion_id,
+                ];
+            }
+        }
+
+        return $postMap;
+    }
+
+    /**
+     * Extracts the pids referenced by a post's migrated QUOTEs, using the same
+     * pattern that `restore()` recognizes.
+     *
+     * @return array<int, int>
+     */
+    public static function extractPids(string $xml): array
+    {
+        if (! preg_match_all(
+            '#<QUOTE author="[^"]+"><s>\[quote=[^\]]*?\bpid=[\'"](\d+)[\'"]#i',
+            $xml,
+            $m
+        )) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map('intval', $m[1])));
     }
 
     /**
