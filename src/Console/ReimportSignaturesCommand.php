@@ -4,9 +4,9 @@ namespace Ramon\MybbMigrator\Console;
 
 use Flarum\Console\AbstractCommand;
 use Flarum\Formatter\Formatter;
+use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\ConnectionInterface;
-use PDO;
 use Ramon\MybbMigrator\BBCode\Converter;
 use Ramon\MybbMigrator\Support\Charset;
 use Symfony\Component\Console\Input\InputOption;
@@ -26,9 +26,12 @@ use Symfony\Component\Console\Input\InputOption;
  */
 class ReimportSignaturesCommand extends AbstractCommand
 {
+    use MybbConnectionOptions;
+
     public function __construct(
         protected ConnectionInterface $db,
         protected Container $container,
+        protected SettingsRepositoryInterface $settings,
     ) {
         parent::__construct();
     }
@@ -38,12 +41,8 @@ class ReimportSignaturesCommand extends AbstractCommand
         $this
             ->setName('mybb:reimport-signatures')
             ->setDescription('Re-imports users.bio from MyBB with BBCode → s9e XML (preserves color/bold/italic).')
-            ->addOption('mybb-host', null, InputOption::VALUE_REQUIRED, 'MyBB MySQL host.', '127.0.0.1')
-            ->addOption('mybb-db', null, InputOption::VALUE_REQUIRED, 'MyBB database.', 'mybb')
-            ->addOption('mybb-user', null, InputOption::VALUE_REQUIRED, 'MySQL user.', 'root')
-            ->addOption('mybb-pass', null, InputOption::VALUE_OPTIONAL, 'MySQL password.', '')
-            ->addOption('mybb-prefix', null, InputOption::VALUE_REQUIRED, 'Table prefix.', 'dfsmybb_')
             ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
+        $this->addMybbConnectionOptions();
     }
 
     protected function fire(): int
@@ -53,19 +52,8 @@ class ReimportSignaturesCommand extends AbstractCommand
             return 1;
         }
 
-        $mybb = new PDO(
-            'mysql:host=' . $this->input->getOption('mybb-host')
-                . ';dbname=' . $this->input->getOption('mybb-db')
-                . ';charset=utf8mb4',
-            $this->input->getOption('mybb-user'),
-            (string) $this->input->getOption('mybb-pass'),
-            [
-                PDO::ATTR_ERRMODE          => PDO::ERRMODE_EXCEPTION,
-                PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4',
-            ]
-        );
-
-        $prefix = (string) $this->input->getOption('mybb-prefix');
+        $mybb = $this->buildMybbDatabase($this->settings);
+        $prefix = $mybb->prefix();
 
         $this->settingTrue('fof-user-bio.allowFormatting');
 
@@ -89,15 +77,14 @@ class ReimportSignaturesCommand extends AbstractCommand
         $flarumIds = array_flip(array_map('intval', $flarumIds));
         $this->info('  ' . count($flarumIds) . ' users in Flarum.');
 
-        $stmt = $mybb->prepare("SELECT uid, signature FROM `{$prefix}users` WHERE signature IS NOT NULL AND signature <> '' ORDER BY uid");
-        $stmt->execute();
+        $rows = $mybb->cursor("SELECT uid, signature FROM `{$prefix}users` WHERE signature IS NOT NULL AND signature <> '' ORDER BY uid");
 
         $updated = 0;
         $skipped = 0;
         $failed = 0;
         $empty = 0;
 
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        foreach ($rows as $row) {
             $uid = (int) $row['uid'];
             if (! isset($flarumIds[$uid])) {
                 $skipped++;
