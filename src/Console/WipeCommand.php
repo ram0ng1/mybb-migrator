@@ -58,7 +58,7 @@ class WipeCommand extends AbstractCommand
         ];
 
         $this->info('Disabling FKs and truncating content tables...');
-        $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
+        $this->db->getSchemaBuilder()->disableForeignKeyConstraints();
 
         try {
             foreach ($tables as $table) {
@@ -80,7 +80,7 @@ class WipeCommand extends AbstractCommand
                 ->delete();
             $this->info("  cleaned tag/discussion-scoped permissions: $orphanPerms");
         } finally {
-            $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
+            $this->db->getSchemaBuilder()->enableForeignKeyConstraints();
         }
 
         $this->info('Cleanup complete.');

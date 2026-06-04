@@ -27,6 +27,9 @@ class MigratePollsCommand extends AbstractCommand
 {
     use MybbConnectionOptions;
 
+    /** Tamanho do lote de INSERT em poll_votes (enquetes populares têm muitos votos). */
+    private const VOTE_BATCH = 500;
+
     public function __construct(
         protected ConnectionInterface $db,
         protected SettingsRepositoryInterface $settings,
@@ -102,7 +105,7 @@ class MigratePollsCommand extends AbstractCommand
     protected function wipeFlarumPollsTables(): void
     {
         $this->info('Cleaning current fof/polls tables...');
-        $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
+        $this->db->getSchemaBuilder()->disableForeignKeyConstraints();
 
         try {
             foreach (['poll_votes', 'poll_options', 'poll_groups', 'polls'] as $table) {
@@ -112,7 +115,7 @@ class MigratePollsCommand extends AbstractCommand
                 }
             }
         } finally {
-            $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
+            $this->db->getSchemaBuilder()->enableForeignKeyConstraints();
         }
     }
 
@@ -223,6 +226,7 @@ class MigratePollsCommand extends AbstractCommand
             [$pid]
         );
 
+        $voteRows = [];
         foreach ($voteStmt as $voteRow) {
             $userId = (int) $voteRow['uid'];
             $option = (int) $voteRow['voteoption'];
@@ -237,16 +241,23 @@ class MigratePollsCommand extends AbstractCommand
             }
 
             $voteCreatedAt = date('Y-m-d H:i:s', (int) $voteRow['dateline']);
-            $this->db->table('poll_votes')->insert([
+            $voteRows[] = [
                 'poll_id'    => $pollId,
                 'option_id'  => $optionMap[$option],
                 'user_id'    => $userId > 0 ? $userId : null,
                 'created_at' => $voteCreatedAt,
                 'updated_at' => $voteCreatedAt,
-            ]);
+            ];
 
             $optionTallies[$optionMap[$option]]++;
             $votesCreated++;
+        }
+
+        // INSERT em lote em vez de uma linha por vez: uma enquete popular pode
+        // ter dezenas de milhares de votos, e o insert linha-a-linha levava
+        // minutos de relógio por enquete.
+        foreach (array_chunk($voteRows, self::VOTE_BATCH) as $chunk) {
+            $this->db->table('poll_votes')->insert($chunk);
         }
 
         foreach ($optionTallies as $optionId => $count) {

@@ -85,7 +85,7 @@ class MigrateUsersCommand extends AbstractCommand
                 ORDER BY uid"
                 . ($limit ? " LIMIT {$limit}" : '');
 
-        $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
+        $this->db->getSchemaBuilder()->disableForeignKeyConstraints();
 
         $userBatch = [];
         $pwBatch = [];
@@ -172,7 +172,7 @@ class MigrateUsersCommand extends AbstractCommand
 
             $this->flush($userBatch, $pwBatch, $groupBatch);
         } finally {
-            $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
+            $this->db->getSchemaBuilder()->enableForeignKeyConstraints();
         }
 
         $this->info("Done.");

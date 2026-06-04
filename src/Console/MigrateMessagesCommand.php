@@ -111,7 +111,7 @@ class MigrateMessagesCommand extends AbstractCommand
                 continue;
             }
 
-            $postsCreated += $this->persistConversation($conv);
+            $postsCreated += $this->persistConversation($mybb, $conv);
             $created++;
 
             if ($created % 100 === 0) {
@@ -135,7 +135,7 @@ class MigrateMessagesCommand extends AbstractCommand
     private function wipePreviousPrivateContent(): void
     {
         $this->info('[mybb:messages] Cleaning up content from a previous run...');
-        $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
+        $this->db->getSchemaBuilder()->disableForeignKeyConstraints();
 
         try {
             $privateIds = $this->db->table('discussions')->where('is_private', 1)->pluck('id')->all();
@@ -155,7 +155,7 @@ class MigrateMessagesCommand extends AbstractCommand
                 }
             }
         } finally {
-            $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
+            $this->db->getSchemaBuilder()->enableForeignKeyConstraints();
         }
     }
 
@@ -188,13 +188,17 @@ class MigrateMessagesCommand extends AbstractCommand
      *     lastDateline: int,
      *     starter: int,
      *     lastAuthor: int,
-     *     messages: list<array{from:int, dateline:int, message:string, ipaddress:string}>,
+     *     messages: list<array{pmid:int, from:int, dateline:int}>,
      * }>
      */
     private function groupConversations(MybbDatabase $mybb, array $validUids): array
     {
         $table = $mybb->table('privatemessages');
-        $sql = "SELECT pmid, fromid, recipients, subject, message, dateline, ipaddress
+        // Não selecionamos `message`/`ipaddress` aqui: o corpo (campo pesado) é
+        // adiado para persistConversation() e buscado em lote por pmid. Assim o
+        // agrupamento — que precisa ver todas as PMs de uma vez — guarda só
+        // metadados leves, mantendo a memória controlada em fóruns grandes.
+        $sql = "SELECT pmid, fromid, recipients, subject, dateline
                 FROM $table
                 WHERE folder = " . self::SOURCE_FOLDER . "
                 ORDER BY dateline ASC, pmid ASC";
@@ -202,17 +206,15 @@ class MigrateMessagesCommand extends AbstractCommand
         /** @var array<string, array{
          *     key: string, participants: list<int>, title: string,
          *     firstDateline: int, lastDateline: int, starter: int, lastAuthor: int,
-         *     messages: list<array{from:int, dateline:int, message:string, ipaddress:string}>,
+         *     messages: list<array{pmid:int, from:int, dateline:int}>,
          * }> $groups */
         $groups = [];
 
         foreach ($mybb->cursor($sql) as $row) {
             $fromid    = (int) $row['fromid'];
             $subject   = Charset::fix((string) $row['subject']);
-            $message   = Charset::fix((string) $row['message']);
             $dateline  = (int) $row['dateline'];
-            $ipBinary  = (string) $row['ipaddress'];
-            $ipText    = $this->normalizeIp($ipBinary);
+            $pmid      = (int) $row['pmid'];
 
             if ($fromid <= 0 || ! isset($validUids[$fromid])) {
                 continue;
@@ -242,10 +244,9 @@ class MigrateMessagesCommand extends AbstractCommand
             }
 
             $groups[$key]['messages'][] = [
-                'from'      => $fromid,
-                'dateline'  => $dateline,
-                'message'   => $message,
-                'ipaddress' => $ipText,
+                'pmid'     => $pmid,
+                'from'     => $fromid,
+                'dateline' => $dateline,
             ];
             $groups[$key]['lastDateline'] = $dateline;
             $groups[$key]['lastAuthor']   = $fromid;
@@ -331,14 +332,14 @@ class MigrateMessagesCommand extends AbstractCommand
      * @param array{
      *     participants: list<int>, title: string, firstDateline: int,
      *     lastDateline: int, starter: int, lastAuthor: int,
-     *     messages: list<array{from:int, dateline:int, message:string, ipaddress:string}>,
+     *     messages: list<array{pmid:int, from:int, dateline:int}>,
      * } $conv
      */
-    private function persistConversation(array $conv): int
+    private function persistConversation(MybbDatabase $mybb, array $conv): int
     {
         $count = 0;
 
-        $this->db->transaction(function () use ($conv, &$count): void {
+        $this->db->transaction(function () use ($mybb, $conv, &$count): void {
             $createdAt = $this->ts($conv['firstDateline']);
             $lastAt    = $this->ts($conv['lastDateline']);
             $title     = $this->truncate(Charset::fix($conv['title']), 200);
@@ -397,17 +398,20 @@ class MigrateMessagesCommand extends AbstractCommand
             $number      = 0;
 
             foreach (array_chunk($messages, self::BATCH_SIZE) as $chunk) {
+                $bodies = $this->fetchMessageBodies($mybb, array_column($chunk, 'pmid'));
+
                 $rows = [];
                 foreach ($chunk as $msg) {
                     $number++;
+                    $body = $bodies[$msg['pmid']] ?? ['message' => '', 'ipaddress' => ''];
                     $rows[] = [
                         'discussion_id' => $discussionId,
                         'number'        => $number,
                         'created_at'    => $this->ts($msg['dateline']),
                         'user_id'       => $msg['from'],
                         'type'          => 'comment',
-                        'content'       => Converter::convert($msg['message']),
-                        'ip_address'    => $msg['ipaddress'] !== '' ? $this->truncate($msg['ipaddress'], 45) : null,
+                        'content'       => Converter::convert($body['message']),
+                        'ip_address'    => $body['ipaddress'] !== '' ? $this->truncate($body['ipaddress'], 45) : null,
                         'is_private'    => 0,
                     ];
                 }
@@ -437,6 +441,39 @@ class MigrateMessagesCommand extends AbstractCommand
         });
 
         return $count;
+    }
+
+    /**
+     * Busca os corpos das PMs (campo pesado, adiado durante o agrupamento) por
+     * pmid, em lote. Devolve um mapa pmid => ['message' => texto já corrigido,
+     * 'ipaddress' => ip legível]. Adiar o corpo mantém o agrupamento leve mesmo
+     * em fóruns com centenas de milhares de mensagens.
+     *
+     * @param list<int> $pmids
+     * @return array<int, array{message: string, ipaddress: string}>
+     */
+    private function fetchMessageBodies(MybbDatabase $mybb, array $pmids): array
+    {
+        if ($pmids === []) {
+            return [];
+        }
+
+        $table        = $mybb->table('privatemessages');
+        $placeholders = implode(',', array_fill(0, count($pmids), '?'));
+        $stmt         = $mybb->select(
+            "SELECT pmid, message, ipaddress FROM $table WHERE pmid IN ($placeholders)",
+            $pmids
+        );
+
+        $map = [];
+        foreach ($stmt as $row) {
+            $map[(int) $row['pmid']] = [
+                'message'   => Charset::fix((string) $row['message']),
+                'ipaddress' => $this->normalizeIp((string) $row['ipaddress']),
+            ];
+        }
+
+        return $map;
     }
 
     /**

@@ -68,7 +68,7 @@ class MigrateLikesCommand extends AbstractCommand
         $this->info("Likes to migrate: {$total}");
 
         $this->db->table('post_likes')->truncate();
-        $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
+        $this->db->getSchemaBuilder()->disableForeignKeyConstraints();
 
         $postIds = $this->loadIdSet('posts');
         $userIds = $this->loadIdSet('users');
@@ -111,7 +111,7 @@ class MigrateLikesCommand extends AbstractCommand
                 $inserted += count($batch);
             }
         } finally {
-            $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
+            $this->db->getSchemaBuilder()->enableForeignKeyConstraints();
         }
 
         $this->info("Done. inserted={$inserted}, skipped={$skipped}");

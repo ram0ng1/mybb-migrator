@@ -52,12 +52,4 @@ final class Charset
 
         return $candidate;
     }
-
-    /**
-     * Heurística: presença das sequências típicas de mojibake (Â, Ã, â€ etc.).
-     */
-    private static function looksDoubleEncoded(string $string): bool
-    {
-        return (bool) preg_match('/[\x{00C2}\x{00C3}\x{0080}-\x{009F}][\x{0080}-\x{00BF}]/u', $string);
-    }
 }

@@ -57,7 +57,7 @@ class MigrateReviewsCommand extends AbstractCommand
         $userIds = $this->loadIdSet('users');
         $this->info('Users in Flarum: ' . count($userIds));
 
-        $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
+        $this->db->getSchemaBuilder()->disableForeignKeyConstraints();
 
         try {
             // 1) Categorias
@@ -227,7 +227,7 @@ class MigrateReviewsCommand extends AbstractCommand
             $this->flush('tfb_review_comments', $batch);
             $this->info('Comments: ' . $commentCount);
         } finally {
-            $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
+            $this->db->getSchemaBuilder()->enableForeignKeyConstraints();
         }
 
         $this->recomputeRatings();

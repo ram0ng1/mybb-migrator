@@ -49,7 +49,7 @@ class MigrateGroupsCommand extends AbstractCommand
         $inserted = 0;
         $skipped = 0;
 
-        $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
+        $this->db->getSchemaBuilder()->disableForeignKeyConstraints();
 
         try {
             while ($row = $rows->fetch()) {
@@ -80,7 +80,7 @@ class MigrateGroupsCommand extends AbstractCommand
                 $this->info("  group {$gid}: {$title}");
             }
         } finally {
-            $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
+            $this->db->getSchemaBuilder()->enableForeignKeyConstraints();
         }
 
         $this->info("Custom groups migrated: {$inserted} (skipped gid<=4: {$skipped})");

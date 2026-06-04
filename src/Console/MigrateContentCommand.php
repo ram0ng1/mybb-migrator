@@ -36,6 +36,10 @@ class MigrateContentCommand extends AbstractCommand
     private const PIVOT_BATCH = 1000;
     private const MENTION_BATCH = 2000;
     private const CHUNK = 200;
+    private const THREAD_BATCH = 500;
+
+    /** Posts cujo BBCode convertido o formatter não conseguiu parsear. */
+    private int $parseFailures = 0;
 
     public function __construct(
         protected ConnectionInterface $db,
@@ -82,7 +86,7 @@ class MigrateContentCommand extends AbstractCommand
         $tagParents = $this->loadTagParentMap();
         $this->info('  users in Flarum: '.count($userIds).', tags: '.count($tagIds));
 
-        $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
+        $this->db->getSchemaBuilder()->disableForeignKeyConstraints();
 
         $this->info('  self-cleaning content (discussions/posts/pivots)...');
         foreach (['post_mentions_user','post_mentions_post','post_mentions_tag','post_mentions_group',
@@ -102,19 +106,46 @@ class MigrateContentCommand extends AbstractCommand
 
         $threadVisibleFilter = $skipSoft ? ' AND visible != -1' : '';
 
-        $threadSql = "SELECT tid, fid, subject, uid, dateline, firstpost, lastpost,
-                             lastposteruid, views, replies, closed, sticky, visible
-                      FROM {$prefix}threads
-                      WHERE 1=1 {$threadVisibleFilter}
-                      ORDER BY tid"
-                    . ($limit ? " LIMIT {$limit}" : '');
-
         $threadsDone = 0; $postsDone = 0; $skippedThreads = 0;
+        $this->parseFailures = 0;
+
+        // Paginação por chave (keyset): lê as threads em lotes ordenados por tid
+        // em vez de carregar tudo de uma vez com fetchAll(). Isso mantém o uso de
+        // memória constante em fóruns com centenas de milhares de tópicos, e — por
+        // cada lote ser totalmente bufferizado antes do loop — permite as queries
+        // aninhadas de posts sobre a mesma conexão (um cursor unbuffered não
+        // toleraria queries concorrentes).
+        $lastTid = 0;
+        $remaining = $limit;
 
         try {
-            $threadRows = $mybb->select($threadSql)->fetchAll();
-            foreach ($threadRows as $trow) {
+            while (true) {
+                $take = self::THREAD_BATCH;
+                if ($remaining !== null) {
+                    if ($remaining <= 0) {
+                        break;
+                    }
+                    $take = min($take, $remaining);
+                }
+
+                $batchSql = "SELECT tid, fid, subject, uid, dateline, firstpost, lastpost,
+                                    lastposteruid, views, replies, closed, sticky, visible
+                             FROM {$prefix}threads
+                             WHERE tid > ? {$threadVisibleFilter}
+                             ORDER BY tid
+                             LIMIT {$take}";
+
+                $threadRows = $mybb->select($batchSql, [$lastTid])->fetchAll();
+                if ($threadRows === []) {
+                    break;
+                }
+                if ($remaining !== null) {
+                    $remaining -= count($threadRows);
+                }
+
+                foreach ($threadRows as $trow) {
                 $tid = (int) $trow['tid'];
+                $lastTid = $tid;
                 $fid = (int) $trow['fid'];
 
                 if (! isset($tagIds[$fid])) {
@@ -224,6 +255,7 @@ class MigrateContentCommand extends AbstractCommand
                 if ($threadsDone % 500 === 0) {
                     $this->info("  {$threadsDone}/{$totalThreads} threads / {$postsDone} posts");
                 }
+                }
             }
 
             if ($postBatch !== [])         $this->insertChunked('posts', $postBatch);
@@ -235,13 +267,16 @@ class MigrateContentCommand extends AbstractCommand
                 $this->db->table('tags')->where('id', $tagId)->update(['discussion_count' => $count]);
             }
         } finally {
-            $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
+            $this->db->getSchemaBuilder()->enableForeignKeyConstraints();
         }
 
         $this->info("Done.");
         $this->info("  discussions inserted: {$threadsDone}");
         $this->info("  posts inserted      : {$postsDone}");
         $this->info("  threads skipped (fid without tag): {$skippedThreads}");
+        if ($this->parseFailures > 0) {
+            $this->error("  posts preserved as plain text (formatter failed): {$this->parseFailures}");
+        }
 
         return 0;
     }
@@ -278,7 +313,12 @@ class MigrateContentCommand extends AbstractCommand
             try {
                 $content = $this->formatter->parse($normalized);
             } catch (\Throwable $e) {
-                $content = $this->formatter->parse('');
+                // Em vez de descartar o post (parse('') => conteúdo vazio),
+                // preservamos o texto convertido como texto plano. Assim nenhum
+                // conteúdo é perdido mesmo quando o BBCode gera markup inválido.
+                $this->parseFailures++;
+                $this->error("  post pid={$pid}: formatter falhou ({$e->getMessage()}); preservando como texto plano.");
+                $content = $this->plainTextFallback($normalized);
             }
 
             $editUid = (int) ($prow['edituid'] ?? 0);
@@ -436,6 +476,20 @@ class MigrateContentCommand extends AbstractCommand
     private static function ts(int $unix): ?string
     {
         return $unix > 0 ? date('Y-m-d H:i:s', $unix) : null;
+    }
+
+    /**
+     * Representação de texto plano usada quando o formatter não consegue parsear
+     * o BBCode convertido. Monta um elemento `<t>` (raiz sem formatação) do
+     * s9e/TextFormatter, escapando caracteres especiais de XML e removendo os
+     * caracteres de controle inválidos. Garante XML válido e renderizável sem
+     * perder o texto do post original.
+     */
+    private function plainTextFallback(string $text): string
+    {
+        $clean = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', '', $text) ?? '';
+
+        return '<t>' . htmlspecialchars($clean, ENT_QUOTES | ENT_XML1, 'UTF-8') . '</t>';
     }
 
     /**

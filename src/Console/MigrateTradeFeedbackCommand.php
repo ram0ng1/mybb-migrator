@@ -82,7 +82,7 @@ class MigrateTradeFeedbackCommand extends AbstractCommand
         $userIds = $this->loadIdSet('users');
         $this->info('Users in Flarum: ' . count($userIds));
 
-        $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
+        $this->db->getSchemaBuilder()->disableForeignKeyConstraints();
 
         $batch = [];
         $inserted = 0;
@@ -137,7 +137,7 @@ class MigrateTradeFeedbackCommand extends AbstractCommand
                 $inserted += count($batch);
             }
         } finally {
-            $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
+            $this->db->getSchemaBuilder()->enableForeignKeyConstraints();
         }
 
         $this->info("Import done. inserted={$inserted}, skipped(missing user)={$skippedUser}, skipped(self)={$skippedSelf}");

@@ -51,7 +51,7 @@ class MigrateTagsCommand extends AbstractCommand
              ORDER BY pid, disporder, fid"
         );
 
-        $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
+        $this->db->getSchemaBuilder()->disableForeignKeyConstraints();
 
         try {
             // Self-clean so the command is idempotent: removes the default tag
@@ -105,7 +105,7 @@ class MigrateTagsCommand extends AbstractCommand
                 $inserted++;
             }
         } finally {
-            $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
+            $this->db->getSchemaBuilder()->enableForeignKeyConstraints();
         }
 
         $this->info("Tags migrated: {$inserted} (redirects skipped: {$skipped})");

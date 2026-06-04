@@ -48,7 +48,7 @@ class MigrateSubscriptionsCommand extends AbstractCommand
         $discussionIds = $this->loadIdSet('discussions');
         $tagIds = $this->loadIdSet('tags');
 
-        $this->db->statement('SET FOREIGN_KEY_CHECKS=0');
+        $this->db->getSchemaBuilder()->disableForeignKeyConstraints();
 
         $threadInserted = 0; $threadSkipped = 0;
         $forumInserted = 0; $forumSkipped = 0;
@@ -116,7 +116,7 @@ class MigrateSubscriptionsCommand extends AbstractCommand
                 $this->info('  tag_user.subscription does not exist — forum subscriptions were not migrated.');
             }
         } finally {
-            $this->db->statement('SET FOREIGN_KEY_CHECKS=1');
+            $this->db->getSchemaBuilder()->enableForeignKeyConstraints();
         }
 
         $this->info("Done.");
