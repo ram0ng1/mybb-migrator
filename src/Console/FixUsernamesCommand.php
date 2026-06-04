@@ -167,7 +167,11 @@ class FixUsernamesCommand extends AbstractCommand
 
         // chunkById com whereRaw — usa o connection direto pra evitar recriar bindings
         // a cada chunk. Fazemos manualmente com cursor.
-        $sql = 'SELECT id, content FROM posts WHERE (' . implode(' OR ', $likeClauses) . ') ORDER BY id';
+        // ATENÇÃO: raw SQL não passa pelo query builder, então o prefixo de
+        // tabela do Flarum (ex: `flarum_`) precisa ser aplicado à mão — senão
+        // bate em `posts` (inexistente) ao invés de `{prefix}posts`.
+        $postsTable = $this->db->getTablePrefix() . 'posts';
+        $sql = 'SELECT id, content FROM ' . $postsTable . ' WHERE (' . implode(' OR ', $likeClauses) . ') ORDER BY id';
         $pdo = $this->db->getPdo();
         $stmt = $pdo->prepare($sql);
         $stmt->execute($bindings);
