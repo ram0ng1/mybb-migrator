@@ -135,38 +135,38 @@ class ApplyNicknamesCommand extends AbstractCommand
         $this->info('Phase 2: rewriting refs in posts.content…');
 
         // Filtro: posts contendo qualquer um dos fixSlugs.
-        $likeClauses = [];
-        $bindings = [];
+        $patterns = [];
         foreach ($renames as $r) {
-            $likeClauses[] = 'content LIKE ?';
-            $bindings[] = '%' . addcslashes(htmlspecialchars((string) $r->new_username, ENT_QUOTES | ENT_XML1, 'UTF-8'), '\\%_') . '%';
+            $patterns[] = '%' . addcslashes(htmlspecialchars((string) $r->new_username, ENT_QUOTES | ENT_XML1, 'UTF-8'), '\\%_') . '%';
         }
 
-        // Em chunks pra não ter UM whereRaw gigante. Quebra em grupos de 200 LIKEs.
+        // Em chunks pra não ter UM WHERE gigante. Quebra em grupos de 200 LIKEs.
+        // Usa o query builder (mesma conexão da Fase 1) em vez de PDO cru, que não
+        // resolve a tabela pela conexão configurada do Flarum.
         $chunkSize = 200;
         $totalScanned = 0;
         $totalUpdated = 0;
 
-        for ($i = 0; $i < count($likeClauses); $i += $chunkSize) {
-            $clausesChunk = array_slice($likeClauses, $i, $chunkSize);
-            $bindingsChunk = array_slice($bindings, $i, $chunkSize);
+        foreach (array_chunk($patterns, $chunkSize) as $idx => $patternsChunk) {
+            $rows = $this->db->table('posts')
+                ->select('id', 'content')
+                ->where(function ($q) use ($patternsChunk) {
+                    foreach ($patternsChunk as $p) {
+                        $q->orWhere('content', 'LIKE', $p);
+                    }
+                })
+                ->orderBy('id')
+                ->get();
 
-            $sql = 'SELECT id, content FROM posts WHERE (' . implode(' OR ', $clausesChunk) . ') ORDER BY id';
-            $pdo = $this->db->getPdo();
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($bindingsChunk);
-            $stmt->setFetchMode(\PDO::FETCH_ASSOC);
-
-            while ($row = $stmt->fetch()) {
+            foreach ($rows as $row) {
                 $totalScanned++;
-                $newContent = strtr((string) $row['content'], $strtr);
-                if ($newContent !== $row['content']) {
-                    $this->db->table('posts')->where('id', $row['id'])->update(['content' => $newContent]);
+                $newContent = strtr((string) $row->content, $strtr);
+                if ($newContent !== $row->content) {
+                    $this->db->table('posts')->where('id', $row->id)->update(['content' => $newContent]);
                     $totalUpdated++;
                 }
             }
-            $stmt->closeCursor();
-            $this->info("  chunk " . (intdiv($i, $chunkSize) + 1) . ": scanned={$totalScanned} updated={$totalUpdated}");
+            $this->info("  chunk " . ($idx + 1) . ": scanned={$totalScanned} updated={$totalUpdated}");
         }
 
         $this->info('Done.');

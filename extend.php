@@ -5,6 +5,7 @@ namespace Ramon\MybbMigrator;
 use Flarum\Extend;
 use Ramon\MybbMigrator\Auth\MybbPasswordChecker;
 use Ramon\MybbMigrator\Console\FixCharsetCommand;
+use Ramon\MybbMigrator\Console\FixDiscussionSlugsCommand;
 use Ramon\MybbMigrator\Console\FixEmojisCommand;
 use Ramon\MybbMigrator\Console\FixFontBbcodeCommand;
 use Ramon\MybbMigrator\Console\FixMentionSlugsCommand;
@@ -68,6 +69,7 @@ return [
         ->command(RevertIspoilerCommand::class)
         ->command(RecoverProtectedPostsCommand::class)
         ->command(FixMentionSlugsCommand::class)
+        ->command(FixDiscussionSlugsCommand::class)
         ->command(FixSizeBbcodeCommand::class)
         ->command(FixSmiliesCommand::class)
         ->command(FixSignaturesCommand::class)
