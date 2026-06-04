@@ -10,6 +10,7 @@ use Ramon\MybbMigrator\Console\FixEmojisCommand;
 use Ramon\MybbMigrator\Console\FixFontBbcodeCommand;
 use Ramon\MybbMigrator\Console\FixMentionSlugsCommand;
 use Ramon\MybbMigrator\Console\FixPmParseCommand;
+use Ramon\MybbMigrator\Console\FixPseudoListsCommand;
 use Ramon\MybbMigrator\Console\FixQuotesCommand;
 use Ramon\MybbMigrator\Console\FixSignaturesCommand;
 use Ramon\MybbMigrator\Console\FixSizeBbcodeCommand;
@@ -79,6 +80,7 @@ return [
         ->command(TestBioRenderCommand::class)
         ->command(NormalizeBbcodeCommand::class)
         ->command(FixPmParseCommand::class)
+        ->command(FixPseudoListsCommand::class)
         ->command(FixFontBbcodeCommand::class)
         ->command(StripOrphanBbcodeCommand::class)
         ->command(MakeAdminCommand::class)
