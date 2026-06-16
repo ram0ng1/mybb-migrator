@@ -1,0 +1,21 @@
+// Ajuste visual da assinatura migrada (fof/signature).
+//
+// O fof/signature desenha uma barra de destaque VERTICAL à esquerda
+// (`border-left: 3px solid var(--primary-color)`), que neste tema fica vermelha.
+// Aqui trocamos por uma LINHA DIVISÓRIA sutil no TOPO — só um detalhe que separa
+// a assinatura do corpo do post, como no MyBB.
+//
+// O seletor `.Post .Post-signature` tem especificidade maior que o
+// `.Post-signature` do fof/signature, então vence independente da ordem de
+// carregamento das extensões (sem precisar de !important).
+//
+// Não mexemos em `text-align`: assinaturas que vinham centralizadas/à direita do
+// MyBB mantêm o alinhamento original ("se a assinatura for lateral, fica na
+// lateral").
+.Post .Post-signature {
+  border-left: none;
+  padding-left: 0;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--control-bg);
+}

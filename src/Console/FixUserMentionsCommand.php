@@ -136,6 +136,34 @@ class FixUserMentionsCommand extends AbstractCommand
 
         $new = implode('', $pieces);
 
+        // O s9e/TextFormatter só aplica os templates das tags quando a raiz do
+        // documento é <r> (rich). Posts originalmente em texto puro têm raiz <t>
+        // (plain) e, ao injetar <USERMENTION> dentro deles, a menção ficava CRUA
+        // no HTML — aparecendo como texto "@Nero" em vez de virar link. Promove a
+        // raiz para <r> sempre que o conteúdo final contiver uma tag de menção
+        // renderizável. Cobre tanto a injeção feita agora quanto posts já
+        // quebrados por execuções anteriores (idempotente).
+        $new = self::promoteRootIfTagged($new);
+
         return [$new, array_values(array_unique($collected))];
+    }
+
+    /**
+     * Promove a raiz <t> → <r> quando o documento contém uma tag de menção
+     * (USERMENTION/POSTMENTION). Sem isso, o renderer do s9e trata o documento
+     * como texto puro e emite a tag literalmente, sem virar link. Documentos que
+     * já são <r>, ou <t> sem tags, são devolvidos intactos.
+     */
+    public static function promoteRootIfTagged(string $xml): string
+    {
+        if (! str_starts_with($xml, '<t>') || ! str_ends_with($xml, '</t>')) {
+            return $xml;
+        }
+
+        if (! preg_match('/<(?:USER|POST)MENTION\b/', $xml)) {
+            return $xml;
+        }
+
+        return '<r>' . substr($xml, 3, -4) . '</r>';
     }
 }

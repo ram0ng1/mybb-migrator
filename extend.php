@@ -19,6 +19,7 @@ use Ramon\MybbMigrator\Console\ApplyNicknamesCommand;
 use Ramon\MybbMigrator\Console\FixUsernamesCommand;
 use Ramon\MybbMigrator\Console\FixUserMentionsCommand;
 use Ramon\MybbMigrator\Console\RestoreQuoteMentionsCommand;
+use Ramon\MybbMigrator\Console\RestoreQuotesCommand;
 use Ramon\MybbMigrator\Console\RevertIspoilerCommand;
 use Ramon\MybbMigrator\Console\RevertMdStrikeSubCommand;
 use Ramon\MybbMigrator\Console\RevertQuoteMentionsCommand;
@@ -42,11 +43,15 @@ use Ramon\MybbMigrator\Console\MigrateUsersCommand;
 use Ramon\MybbMigrator\Console\NormalizeBbcodeCommand;
 use Ramon\MybbMigrator\Console\RecoverProtectedPostsCommand;
 use Ramon\MybbMigrator\Console\ReimportSignaturesCommand;
+use Ramon\MybbMigrator\Console\MigrateSignaturesCommand;
 use Ramon\MybbMigrator\Console\TestBioRenderCommand;
 use Ramon\MybbMigrator\Console\TestCredentialsCommand;
 use Ramon\MybbMigrator\Console\WipeCommand;
 
 return [
+    (new Extend\Frontend('forum'))
+        ->css(__DIR__ . '/less/signature.less'),
+
     (new Extend\Auth())
         ->addPasswordChecker('mybb-legacy', MybbPasswordChecker::class),
 
@@ -77,6 +82,7 @@ return [
         ->command(FixUsernamesCommand::class)
         ->command(ApplyNicknamesCommand::class)
         ->command(ReimportSignaturesCommand::class)
+        ->command(MigrateSignaturesCommand::class)
         ->command(TestBioRenderCommand::class)
         ->command(NormalizeBbcodeCommand::class)
         ->command(FixPmParseCommand::class)
@@ -90,6 +96,7 @@ return [
         ->command(MigrateTradeFeedbackCommand::class)
         ->command(MigrateReviewsCommand::class)
         ->command(CompactQuotesCommand::class)
+        ->command(RestoreQuotesCommand::class)
         ->command(FixTapatalkEmojiCommand::class)
         ->command(TestCredentialsCommand::class),
 ];

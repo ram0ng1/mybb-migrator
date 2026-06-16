@@ -162,8 +162,12 @@ class FixQuotesCommand extends AbstractCommand
     {
         $collected = [];
 
+        // Idempotência: remove QUALQUER POSTMENTION (formato antigo OU atual, e
+        // sequências consecutivas) imediatamente antes de um <QUOTE>, para depois
+        // re-injetar exatamente UMA. Sem isso, re-rodar o comando empilhava uma
+        // POSTMENTION duplicada a cada execução (ex.: `@X@X<QUOTE>`).
         $xml = (string) preg_replace(
-            '#<POSTMENTION displayname="[^"]*" id="\d+">@[^<]*</POSTMENTION>(?=<QUOTE)#',
+            '#(?:<POSTMENTION\b[^>]*>@[^<]*</POSTMENTION>)+(?=<QUOTE\b)#',
             '',
             $xml
         );
