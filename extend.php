@@ -41,6 +41,7 @@ use Ramon\MybbMigrator\Console\MigrateTagsCommand;
 use Ramon\MybbMigrator\Console\MigrateTradeFeedbackCommand;
 use Ramon\MybbMigrator\Console\MigrateUsersCommand;
 use Ramon\MybbMigrator\Console\NormalizeBbcodeCommand;
+use Ramon\MybbMigrator\Console\RebuildFormattingCommand;
 use Ramon\MybbMigrator\Console\RecoverProtectedPostsCommand;
 use Ramon\MybbMigrator\Console\ReimportSignaturesCommand;
 use Ramon\MybbMigrator\Console\MigrateSignaturesCommand;
@@ -89,6 +90,7 @@ return [
         ->command(FixPseudoListsCommand::class)
         ->command(FixFontBbcodeCommand::class)
         ->command(StripOrphanBbcodeCommand::class)
+        ->command(RebuildFormattingCommand::class)
         ->command(MakeAdminCommand::class)
         ->command(MigrateSubscriptionsCommand::class)
         ->command(MigrateMessagesCommand::class)

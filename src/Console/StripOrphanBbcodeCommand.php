@@ -107,6 +107,13 @@ class StripOrphanBbcodeCommand extends AbstractCommand
 
         $xml = (string) preg_replace('#\[/?(?:' . self::TAG_LIST . ')\b[^\]]*\]#i', '', $xml);
 
+        // url/img: só os marcadores SEM dado — `[/url]`, `[img]`, `[/img]` órfãos
+        // (sobra de aninhamento malformado do MyBB, ex.: `…[/IMG][/URL][/img]`).
+        // `[url=...]` de ABERTURA NÃO é removido (carrega a URL); o conteúdo
+        // legítimo já está protegido em <URL>/<s>/<e>.
+        $xml = (string) preg_replace('#\[/url\]#i', '', $xml);
+        $xml = (string) preg_replace('#\[/?img\]#i', '', $xml);
+
         foreach ($protected as $i => $original) {
             $xml = str_replace(sprintf($placeholderTpl, $i), $original, $xml);
         }

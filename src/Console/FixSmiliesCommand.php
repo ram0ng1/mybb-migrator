@@ -9,8 +9,9 @@ use Symfony\Component\Console\Input\InputOption;
 
 /**
  * Substitui smilies textuais do MyBB (códigos como `:happy2:`, `:rolleyes:`,
- * `:)`, `:cool:` etc.) por emojis Unicode em `posts.content` e
- * `discussions.title`.
+ * `:)`, `:cool:` etc.) por emojis Unicode em `posts.content`,
+ * `discussions.title` e `users.signature` (fof/signature) — esta última
+ * guardava os códigos literais, aparecendo como "smilie quebrado".
  *
  * Lê a tabela `dfsmybb_smilies` do MyBB pra descobrir o conjunto completo
  * de códigos usados no fórum; cada código conhecido é mapeado para um
@@ -124,6 +125,7 @@ class FixSmiliesCommand extends AbstractCommand
 
         $totalPosts = 0;
         $totalTitles = 0;
+        $totalSignatures = 0;
 
         $this->info('Repairing posts.content...');
         $this->db->table('posts')
@@ -161,9 +163,36 @@ class FixSmiliesCommand extends AbstractCommand
                 $this->info("  titles fixed: {$totalTitles}");
             });
 
+        // Assinaturas (fof/signature) — guardadas como XML s9e já parseado; os
+        // códigos de smilie ficam como texto plano dentro do XML, então o mesmo
+        // strtr aplica. mybb:fix-smilies só tratava posts/títulos, deixando as
+        // assinaturas com `:cool:`, `:)` etc literais ("smilie quebrado").
+        if ($this->db->getSchemaBuilder()->hasColumn('users', 'signature')) {
+            $this->info('Repairing users.signature...');
+            $this->db->table('users')
+                ->whereNotNull('signature')
+                ->where('signature', '<>', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$totalSignatures, $map, $codes) {
+                    foreach ($rows as $row) {
+                        $old = (string) $row->signature;
+                        if (! self::contentLikelyHasSmiley($old, $codes)) {
+                            continue;
+                        }
+                        $new = strtr($old, $map);
+                        if ($new !== $old) {
+                            $this->db->table('users')->where('id', $row->id)->update(['signature' => $new]);
+                            $totalSignatures++;
+                        }
+                    }
+                    $this->info("  signatures fixed: {$totalSignatures}");
+                });
+        }
+
         $this->info('Done.');
         $this->info("  posts fixed        : {$totalPosts}");
         $this->info("  discussions fixed  : {$totalTitles}");
+        $this->info("  signatures fixed   : {$totalSignatures}");
 
         return 0;
     }

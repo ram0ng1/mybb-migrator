@@ -277,6 +277,7 @@ Run only the ones you need; safe to re-run.
 ```bash
 php flarum mybb:fix-charset        --force   # repair mojibake in posts/titles
 php flarum mybb:fix-smilies        --force   # textual smilies (:rolleyes:) -> Unicode
+                                             # (posts, discussion titles AND signatures)
 php flarum mybb:fix-emojis         --force   # [emojiN] (Tapatalk) -> Unicode
 php flarum mybb:fix-tapatalk-emoji --force   # re-fix mis-mapped Tapatalk emoji
 
@@ -284,6 +285,14 @@ php flarum mybb:normalize-bbcode   --force   # re-parse size/font/align/hr/php
 php flarum mybb:fix-size-bbcode    --force   # literal [size=X] -> <SIZE>
 php flarum mybb:fix-font-bbcode    --force   # strip literal [font=...]
 php flarum mybb:strip-orphan-bbcode --force  # remove orphan literal BBCode markers
+php flarum mybb:rebuild-formatting  --force  # re-derive markdown-broken posts from source:
+                                             #  - inline BBCode split across blank lines
+                                             #    (orphan [/b][/size], lost colors)
+                                             #  - TAB / 4-space lines -> accidental code box
+                                             #  - `#` / setext (--, ==) -> accidental heading
+                                             #  - \r\r\n -> doubled spacing
+                                             # Re-parses from source, so re-run the Phase-3
+                                             # content passes you use AFTER it (see note below).
 php flarum mybb:revert-md-strike-sub --force # undo ~~/~ markdown that were MyBB separators
 php flarum mybb:revert-ispoiler     --force  # <ISPOILER> -> literal ||text||
 
@@ -302,6 +311,16 @@ php flarum mybb:apply-nicknames      --force # old_username -> nickname + kebab 
 php flarum mybb:fix-pm-parse         --force # re-parse PM bodies left as raw BBCode
 php flarum mybb:recover-protected    --force # rebuild posts with literal PROTECTED_N
 ```
+
+> **About `mybb:rebuild-formatting`.** Because it re-reads each affected post from
+> the MyBB source and re-parses it, it overwrites `posts.content` and therefore
+> drops any earlier Phase-3 edits on *those* posts (smilies, mentions, quote
+> styling, strike/spoiler reverts). After running it, re-run the idempotent
+> Phase-3 passes you use — typically `fix-smilies`, `fix-quotes` (or your chosen
+> quote-style pass), `fix-user-mentions`, `fix-mention-slugs`, and any
+> `revert-md-strike-sub` / `revert-ispoiler` — to restore them. The converter
+> itself is now fixed, so a *fresh* `mybb:content` migration no longer produces
+> these markdown artifacts in the first place.
 
 ### Helpers / diagnostics
 
