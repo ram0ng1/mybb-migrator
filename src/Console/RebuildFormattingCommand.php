@@ -194,9 +194,9 @@ class RebuildFormattingCommand extends AbstractCommand
         }
 
         if (! $dryRun && $changed > 0) {
-            $this->warn('Rebuilt posts were re-parsed from source. Re-run the idempotent Phase-3');
-            $this->warn('content passes you use (fix-smilies, fix-user-mentions, fix-mention-slugs,');
-            $this->warn('your quote-style pass, revert-md-strike-sub, revert-ispoiler) to restore them.');
+            $this->output->writeln('<comment>Rebuilt posts were re-parsed from source. Re-run the idempotent Phase-3</comment>');
+            $this->output->writeln('<comment>content passes you use (fix-smilies, fix-user-mentions, fix-mention-slugs,</comment>');
+            $this->output->writeln('<comment>your quote-style pass, revert-md-strike-sub, revert-ispoiler) to restore them.</comment>');
         }
 
         return 0;

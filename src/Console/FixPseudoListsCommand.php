@@ -112,7 +112,7 @@ class FixPseudoListsCommand extends AbstractCommand
 
         if ($dryRun) {
             $this->info("Post {$id}: would be rewritten. New content:");
-            $this->line($fixed);
+            $this->output->writeln($fixed);
             return 0;
         }
 
