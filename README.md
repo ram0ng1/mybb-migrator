@@ -293,6 +293,16 @@ php flarum mybb:rebuild-formatting  --force  # re-derive markdown-broken posts f
                                              #  - \r\r\n -> doubled spacing
                                              # Re-parses from source, so re-run the Phase-3
                                              # content passes you use AFTER it (see note below).
+php flarum mybb:fix-spacing         --force  # restore faithful MyBB nl2br spacing on ALREADY
+                                             # migrated posts. MyBB renders every newline as a
+                                             # <br> and never collapses blank lines; litedown
+                                             # merges consecutive blank lines into one paragraph
+                                             # break, so migrated posts lost vertical spacing.
+                                             # Re-derives affected posts from source with the
+                                             # fixed Converter (blank lines -> invisible U+200B
+                                             # markers -> <br>). Try --dry-run first; re-parses
+                                             # from source, so re-run the Phase-3 content passes
+                                             # you use AFTER it (see note below).
 php flarum mybb:revert-md-strike-sub --force # undo ~~/~ markdown that were MyBB separators
 php flarum mybb:revert-ispoiler     --force  # <ISPOILER> -> literal ||text||
 

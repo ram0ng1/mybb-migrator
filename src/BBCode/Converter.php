@@ -21,9 +21,12 @@ use Ramon\MybbMigrator\Support\TapatalkEmoji;
  *  6. Converte [email=addr]label[/email] para [email]addr[/email].
  *  7. Mantém todo o restante (b, i, u, s, color, size, align, hr, code, list,
  *     img, url, table) — flarum/bbcode renderiza nativamente.
- *  8. preserveLiteralLayout: escapa marcadores de pseudo-lista (`* `, `- `, …)
- *     e redistribui BBCode inline por blocos, para o layout ficar fiel ao MyBB
- *     (nl2br, sem markdown) — sem listas acidentais nem tags órfãs.
+ *  8. preserveLiteralLayout: escapa marcadores de pseudo-lista (`* `, `- `, …),
+ *     redistribui BBCode inline por blocos e PRESERVA O ESPAÇAMENTO do MyBB —
+ *     cada linha em branco vira um `<br>` (via marcador invisível U+200B), porque
+ *     o MyBB usa nl2br e nunca colapsa linhas em branco como o markdown faz. O
+ *     resultado fica fiel ao MyBB (sem listas acidentais, tags órfãs ou vãos
+ *     verticais comidos). Veja preserveBlankLines().
  */
 final class Converter
 {
@@ -142,16 +145,60 @@ final class Converter
 
         $text = self::redistributeInline($text);
         $text = self::escapeMarkdownStarters($text);
+        $text = self::preserveBlankLines($text);
 
-        // Restaura a sentinela do [hr] como thematic break real (depois do escape,
-        // para o `---` legítimo do [hr] sobreviver).
-        $text = str_replace("\x00HRULE\x00", '---', $text);
+        // Restaura a sentinela do [hr] como thematic break real. O `---` precisa de
+        // linhas EM BRANCO de verdade ao redor (não os marcadores invisíveis de
+        // preserveBlankLines) — senão um marcador colado vira sublinhado setext e o
+        // `---` viraria heading. Por isso consumimos os marcadores adjacentes ao
+        // restaurar, recriando o vão em branco real. (Feito depois do escape, para
+        // o `---` legítimo do [hr] sobreviver.)
+        $text = (string) preg_replace(
+            '/(?:\x{200B}\n)?\x00HRULE\x00(?:\n\x{200B})?/u',
+            "\n---\n",
+            $text
+        );
 
         foreach ($protected as $i => $original) {
             $text = str_replace("\x00CODE{$i}\x00", $original, $text);
         }
 
         return $text;
+    }
+
+    /**
+     * Fidelidade de espaçamento (nl2br do MyBB). O MyBB renderiza CADA quebra de
+     * linha como um `<br>` e NUNCA colapsa linhas em branco consecutivas. O
+     * litedown faz o oposto: junta qualquer número de linhas em branco numa única
+     * quebra de parágrafo (`<p>…</p><p>…</p>`), perdendo o vão vertical que o autor
+     * digitou. Para reproduzir o layout do MyBB, preenchemos cada linha vazia com
+     * um ZERO-WIDTH SPACE (U+200B): a linha deixa de ser "vazia" aos olhos do
+     * litedown — então não vira separador de parágrafo — e cada `\n` volta a virar
+     * um `<br>` (o Flarum core habilita enableAutoLineBreaks). O marcador é
+     * invisível, então o resultado é visualmente idêntico ao `<br>` vazio do MyBB.
+     *
+     * Linhas em branco no INÍCIO/FIM da mensagem são descartadas (ruído de edição
+     * — não fazem parte do conteúdo); o espaçamento INTERNO é preservado byte a
+     * byte. O conteúdo de `[code]` já está protegido (sentinela) neste ponto.
+     */
+    private static function preserveBlankLines(string $text): string
+    {
+        // Descarta linhas em branco de borda (apenas as extremidades da mensagem).
+        $text = (string) preg_replace('/\A(?:[ \t]*\n)+/', '', $text);
+        $text = (string) preg_replace('/(?:\n[ \t]*)+\z/', '', $text);
+
+        if ($text === '') {
+            return $text;
+        }
+
+        $lines = explode("\n", $text);
+        foreach ($lines as $i => $line) {
+            if ($line === '') {
+                $lines[$i] = "\u{200B}";
+            }
+        }
+
+        return implode("\n", $lines);
     }
 
     /**

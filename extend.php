@@ -15,6 +15,7 @@ use Ramon\MybbMigrator\Console\FixQuotesCommand;
 use Ramon\MybbMigrator\Console\FixSignaturesCommand;
 use Ramon\MybbMigrator\Console\FixSizeBbcodeCommand;
 use Ramon\MybbMigrator\Console\FixSmiliesCommand;
+use Ramon\MybbMigrator\Console\FixSpacingCommand;
 use Ramon\MybbMigrator\Console\ApplyNicknamesCommand;
 use Ramon\MybbMigrator\Console\FixUsernamesCommand;
 use Ramon\MybbMigrator\Console\FixUserMentionsCommand;
@@ -91,6 +92,7 @@ return [
         ->command(FixFontBbcodeCommand::class)
         ->command(StripOrphanBbcodeCommand::class)
         ->command(RebuildFormattingCommand::class)
+        ->command(FixSpacingCommand::class)
         ->command(MakeAdminCommand::class)
         ->command(MigrateSubscriptionsCommand::class)
         ->command(MigrateMessagesCommand::class)
