@@ -57,6 +57,31 @@ class ConverterTest extends TestCase
         );
     }
 
+    public function test_numbered_lines_are_neutralized_without_a_visible_backslash(): void
+    {
+        // O MyBB renderiza `1. ` / `2. ` como texto literal (nl2br, sem markdown);
+        // o litedown transformaria numa <ol>. Neutralizamos prefixando a linha com
+        // U+200B — NUNCA com `\`: o litedown não escapa `.`, então a barra sobraria
+        // visível no post renderizado (o bug `1\.`). Cada marcador precisa do
+        // prefixo (inclusive os itens separados por linha em branco).
+        $out = Converter::convert("1. first\r\n\r\n2. second");
+
+        $this->assertSame(
+            self::Z . "1. first\n" . self::Z . "\n" . self::Z . "2. second",
+            $out
+        );
+        $this->assertStringNotContainsString('\\', $out);
+    }
+
+    public function test_bullets_and_headings_are_neutralized_without_a_backslash(): void
+    {
+        // Mesmo princípio para `- `/`+ ` (bullets) e `# ` (heading ATX): o litedown
+        // não escapa `-`/`+`/`#`, então usamos U+200B em vez de `\`.
+        $this->assertSame(self::Z . '- a', Converter::convert('- a'));
+        $this->assertSame(self::Z . '+ a', Converter::convert('+ a'));
+        $this->assertSame(self::Z . '# a', Converter::convert('# a'));
+    }
+
     public function test_hr_keeps_real_blank_lines_around_the_rule(): void
     {
         // O thematic break (`---`) precisa de linhas EM BRANCO de verdade ao redor;

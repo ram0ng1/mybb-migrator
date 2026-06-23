@@ -202,7 +202,7 @@ final class Converter
     }
 
     /**
-     * Escapa construções de início de linha que o litedown interpretaria como
+     * Neutraliza construções de início de linha que o litedown interpretaria como
      * blocos markdown, preservando-as como texto literal — fiel ao MyBB (sem
      * markdown). Marcadores BBCode `[*]`/`[list]` NÃO são tocados.
      *
@@ -211,19 +211,29 @@ final class Converter
      *  - blockquote: `> `
      *  - headings setext / thematic break: linha só com `--`/`==`/`***`/`___`
      *    (o `[hr]` legítimo usa a sentinela e é restaurado depois deste passo).
+     *
+     * Mecanismo: prefixamos a linha com um ZERO-WIDTH SPACE (U+200B), que derrota
+     * o lookahead do pass de blocos do litedown (`(?=[-*+\d \t>`~#_])`) sem deixar
+     * caractere visível. NÃO usamos backslash: o litedown só consome a barra
+     * invertida para o seu conjunto escapável (`!"'()*<>[\]^_`~`) — que NÃO inclui
+     * `.`, `-`, `+`, `#` nem `=`. Para esses, um `\` digitado SOBRARIA como texto
+     * literal no post renderizado (ex.: `1. ` virava o visível `1\.`). O U+200B é
+     * invisível e funciona uniformemente para todos os marcadores.
      */
     private static function escapeMarkdownStarters(string $text): string
     {
-        $text = (string) preg_replace('/^(\s*)([*+\-]) /m', '$1\\\\$2 ', $text);
-        $text = (string) preg_replace('/^(\s*)(\d+)([.)]) /m', '$1$2\\\\$3 ', $text);
-        $text = (string) preg_replace('/^(#{1,6} )/m', '\\\\$1', $text);
-        $text = (string) preg_replace('/^(\s*)>/m', '$1\\\\>', $text);
+        // `[ \t]*` (NÃO `\s*`): a indentação inicial já foi removida acima, e `\s*`
+        // engoliria a quebra de linha anterior — empurrando o U+200B para a linha
+        // em branco precedente e deixando o marcador SEM prefixo (a lista voltaria).
+        $text = (string) preg_replace('/^([ \t]*)([*+\-] )/m', "\u{200B}$1$2", $text);
+        $text = (string) preg_replace('/^([ \t]*)(\d+[.)] )/m', "\u{200B}$1$2", $text);
+        $text = (string) preg_replace('/^(#{1,6} )/m', "\u{200B}$1", $text);
+        $text = (string) preg_replace('/^([ \t]*)(>)/m', "\u{200B}$1$2", $text);
         // setext underline / thematic break (linha só com o marcador). UM único
-        // `-` ou `=` já vira heading no CommonMark. `-` `*` `_` → backslash (o
-        // litedown os escapa); `=` → ZERO-WIDTH SPACE no início (o litedown NÃO
-        // escapa `=`), invisível e quebrando o setext.
-        $text = (string) preg_replace('/^(-+[ \t]*)$/m', '\\\\$1', $text);
-        $text = (string) preg_replace('/^([*_]{3,}[ \t]*)$/m', '\\\\$1', $text);
+        // `-` ou `=` já vira heading/regra no CommonMark; o U+200B inicial quebra
+        // o lookahead de bloco e a linha vira texto literal.
+        $text = (string) preg_replace('/^(-+[ \t]*)$/m', "\u{200B}$1", $text);
+        $text = (string) preg_replace('/^([*_]{3,}[ \t]*)$/m', "\u{200B}$1", $text);
         $text = (string) preg_replace('/^(=+[ \t]*)$/m', "\u{200B}$1", $text);
         return $text;
     }
