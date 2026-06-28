@@ -46,6 +46,13 @@ class PhpBinaryLocator
             return ['ok' => false, 'version' => null, 'sapi' => null, 'path' => $path, 'error' => 'empty'];
         }
 
+        // Sem proc_open não há como validar NEM lançar a migração. Em hospedagem
+        // gerenciada / alguns containers ele está em disable_functions (e aí
+        // function_exists() já devolve false). Reporta distintamente.
+        if (! $this->canSpawn()) {
+            return ['ok' => false, 'version' => null, 'sapi' => null, 'path' => $path, 'error' => 'proc-open-disabled'];
+        }
+
         $out = $this->capture([$path, '-n', '-r', 'echo PHP_VERSION . "|" . PHP_SAPI;']);
         if ($out === null) {
             return ['ok' => false, 'version' => null, 'sapi' => null, 'path' => $path, 'error' => 'not-executable'];
@@ -72,21 +79,50 @@ class PhpBinaryLocator
 
     private function fromRunningPhp(): string
     {
-        $binary = (string) (defined('PHP_BINARY') ? PHP_BINARY : '');
-        if ($binary === '') {
-            return '';
-        }
-
         $exe = DIRECTORY_SEPARATOR === '\\' ? 'php.exe' : 'php';
-        $twin = dirname($binary) . DIRECTORY_SEPARATOR . $exe;
+        $binary = (string) (defined('PHP_BINARY') ? PHP_BINARY : '');
 
-        // Preferimos o php.exe CLI irmão (mesma pasta/instalação); senão o
-        // próprio PHP_BINARY (já pode ser o CLI, ou um php-cgi que roda scripts).
-        if (is_file($twin)) {
-            return $twin;
+        // Candidatos ao CLI, do mais específico ao mais comum. Importante para
+        // Docker/php-fpm: PHP_BINARY é o php-fpm (em .../sbin), que NÃO roda `-r`;
+        // o CLI de verdade fica em PHP_BINDIR (.../bin/php) na mesma instalação.
+        $candidates = [];
+        if ($binary !== '') {
+            $candidates[] = dirname($binary) . DIRECTORY_SEPARATOR . $exe;
+        }
+        if (defined('PHP_BINDIR') && PHP_BINDIR !== '') {
+            $candidates[] = rtrim((string) PHP_BINDIR, '/\\') . DIRECTORY_SEPARATOR . $exe;
+        }
+        if (DIRECTORY_SEPARATOR !== '\\') {
+            // imagens oficiais (Debian/Alpine) e distros comuns
+            $candidates[] = '/usr/local/bin/' . $exe;
+            $candidates[] = '/usr/bin/' . $exe;
         }
 
+        // Só checagem de caminho aqui (sem executar): resolve() é chamado a cada
+        // polling de status. A validação (rodar o binário) fica no validate().
+        foreach ($candidates as $cand) {
+            if ($cand !== '' && @is_file($cand) && ! $this->looksLikeNonCli($cand)) {
+                return $cand;
+            }
+        }
+
+        // Último recurso: o próprio PHP_BINARY (pode já ser o CLI; se for php-fpm,
+        // o validate() do chamador reporta o motivo — ex.: sapi:fpm-fcgi).
         return $binary;
+    }
+
+    /** Heurística barata: php-fpm / php-cgi não rodam scripts como o CLI. */
+    private function looksLikeNonCli(string $path): bool
+    {
+        $name = strtolower(basename($path));
+
+        return str_contains($name, 'fpm') || str_contains($name, 'cgi');
+    }
+
+    /** proc_open disponível? (false também quando está em disable_functions). */
+    public function canSpawn(): bool
+    {
+        return function_exists('proc_open');
     }
 
     /**
@@ -94,7 +130,7 @@ class PhpBinaryLocator
      */
     private function capture(array $cmd): ?string
     {
-        if (! function_exists('proc_open')) {
+        if (! $this->canSpawn()) {
             return null;
         }
 

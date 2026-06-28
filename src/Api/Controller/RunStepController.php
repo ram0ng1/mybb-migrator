@@ -58,8 +58,16 @@ class RunStepController implements RequestHandlerInterface
         // -n (seguro): basta conseguir a versão para considerar executável.
         $override = (string) ($this->settings->get('mybb-migrator.php_binary') ?? '');
         $php = $this->locator->resolve($override);
-        if ($php === '' || $this->locator->validate($php)['version'] === null) {
-            return new JsonResponse(['error' => 'no-php-cli'], 422);
+        $check = $php === '' ? ['version' => null, 'error' => 'not-found'] : $this->locator->validate($php);
+        if ($php === '' || $check['version'] === null) {
+            // Inclui o caminho resolvido e o motivo (ex.: 'proc-open-disabled',
+            // 'sapi:fpm-fcgi', 'not-executable') para diagnóstico — sob Docker o
+            // PHP_BINARY costuma ser o php-fpm, que não roda como CLI.
+            return new JsonResponse([
+                'error'    => 'no-php-cli',
+                'resolved' => $php,
+                'reason'   => $check['error'] ?? 'unknown',
+            ], 422);
         }
 
         $extra = isset($body['extra']) && is_array($body['extra']) ? $body['extra'] : [];
