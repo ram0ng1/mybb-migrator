@@ -161,8 +161,19 @@ class GuiRunCommand extends AbstractCommand
         $lines = preg_split("/\r\n|\n|\r/", trim($content)) ?: [];
 
         $counts = [];
+        $warnings = [];
         foreach ($lines as $line) {
             $clean = trim(preg_replace('/\x1b\[[0-9;]*m/', '', $line) ?? '');
+
+            // Avisos: linhas marcadas com ⚠ pelos comandos (itens pulados etc.).
+            // O passo segue (exit 0); só queremos exibi-los ao final, sem parar.
+            if (preg_match('/^⚠\s*(.+)$/u', $clean, $mw)) {
+                if (count($warnings) < 50) {
+                    $warnings[] = trim($mw[1]);
+                }
+                continue;
+            }
+
             if (preg_match('/^([\p{L}\p{N} +\/().,_-]+?)\s*[:=]\s*([\d.,]+)\s*$/u', $clean, $m)) {
                 $label = trim($m[1]);
                 $num = (int) str_replace(['.', ','], '', $m[2]);
@@ -173,8 +184,9 @@ class GuiRunCommand extends AbstractCommand
         $nonEmpty = array_values(array_filter(array_map('trim', $lines), static fn ($l) => $l !== ''));
 
         return [
-            'counts' => $counts,
-            'tail'   => array_slice($nonEmpty, -12),
+            'counts'   => $counts,
+            'warnings' => $warnings,
+            'tail'     => array_slice($nonEmpty, -12),
         ];
     }
 

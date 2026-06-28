@@ -145,6 +145,34 @@
   white-space: nowrap;
 }
 
+// ---- Avisos por passo (itens pulados; nada parou) ----
+.MmWarnings {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--mm-warn);
+  background: #fff8ec;
+  border-radius: 4px;
+
+  &-head {
+    font-weight: 700;
+    color: var(--mm-warn);
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+}
+
+.MmWarn {
+  font-size: 12px;
+  color: #6b5a2e;
+  line-height: 1.5;
+  word-break: break-word;
+
+  &--more {
+    font-style: italic;
+    opacity: 0.8;
+  }
+}
+
 // ---- Preflight ----
 .MmCheckList {
   list-style: none;
@@ -274,6 +302,13 @@
     font-size: 11px;
     text-transform: uppercase;
     color: var(--mm-err);
+    font-weight: 700;
+  }
+
+  &-manual {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--mm-muted);
     font-weight: 700;
   }
 

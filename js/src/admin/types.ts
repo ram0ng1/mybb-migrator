@@ -14,10 +14,13 @@ export interface StepDef {
   dangerous: boolean;
   options: string[];
   requiresUsername: boolean;
+  /** Fora das sequências guiadas (Rodar Fase / Rodar tudo); só execução individual. */
+  manual: boolean;
 }
 
 export interface StepSummary {
   counts?: Record<string, number>;
+  warnings?: string[];
   tail?: string[];
   error?: string;
 }

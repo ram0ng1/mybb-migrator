@@ -46,7 +46,7 @@ class StepCatalog
             self::s('polls',          'mybb:polls',          '2', options: ['dry-run']),
             self::s('trade-feedback', 'mybb:trade-feedback', '2'),
             self::s('reviews',        'mybb:reviews',        '2'),
-            self::s('make-admin',     'mybb:make-admin',     '2', options: ['username', 'like'], requiresUsername: true),
+            self::s('make-admin',     'mybb:make-admin',     '2', options: ['username', 'like'], requiresUsername: true, manual: true),
 
             // ---- Fase 3: limpeza / fidelidade (rodar só o que precisar) ----
             self::s('fix-charset',          'mybb:fix-charset',          '3'),
@@ -102,8 +102,10 @@ class StepCatalog
     }
 
     /**
-     * Sequências guiadas (chaves em ordem). `all` = fase 1 + 2 (não inclui wipe
-     * nem os passos de limpeza, que são manuais).
+     * Sequências guiadas (chaves em ordem). `all` = fase 1 + 2. Passos marcados
+     * como `manual` (ex.: make-admin, que exige um --username específico) ficam
+     * de fora — assim como wipe (fase 0) e os passos de limpeza (fase 3). Eles
+     * continuam visíveis para execução individual no painel.
      *
      * @return array<int, string>
      */
@@ -112,7 +114,10 @@ class StepCatalog
         $keys = static function (string $phase): array {
             return array_values(array_map(
                 static fn ($s) => $s['key'],
-                array_filter(self::all(), static fn ($s) => $s['phase'] === $phase)
+                array_filter(
+                    self::all(),
+                    static fn ($s) => $s['phase'] === $phase && empty($s['manual'])
+                )
             ));
         };
 
@@ -135,6 +140,7 @@ class StepCatalog
         bool $dangerous = false,
         array $options = [],
         bool $requiresUsername = false,
+        bool $manual = false,
     ): array {
         return [
             'key'              => $key,
@@ -144,6 +150,7 @@ class StepCatalog
             'dangerous'        => $dangerous,
             'options'          => $options,
             'requiresUsername' => $requiresUsername,
+            'manual'           => $manual,
         ];
     }
 }

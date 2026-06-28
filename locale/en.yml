@@ -122,6 +122,9 @@ ramon-mybb-migrator:
       run: Run
       dry_run: Dry-run
       dangerous: destructive
+      manual: manual — run individually
+      warnings: "{count} warning(s) — already-populated items were skipped; nothing stopped:"
+      warnings_more: "… and {count} more"
       show_log: Log
       hide_log: Hide log
       reset: Reset

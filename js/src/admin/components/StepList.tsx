@@ -48,7 +48,7 @@ export default class StepList extends Component<Attrs> {
   private orderNumber(key: string): number {
     const catalog = this.attrs.state.status?.catalog ?? [];
     const order = catalog
-      .filter((s) => s.phase === "1" || s.phase === "2")
+      .filter((s) => (s.phase === "1" || s.phase === "2") && !s.manual)
       .map((s) => s.key);
     return order.indexOf(key) + 1;
   }
@@ -68,6 +68,9 @@ export default class StepList extends Component<Attrs> {
             <code className="MmStep-cmd">{def.command}</code>
             {def.dangerous && (
               <span className="MmStep-danger">{trans("steps.dangerous")}</span>
+            )}
+            {def.manual && (
+              <span className="MmStep-manual">{trans("steps.manual")}</span>
             )}
           </div>
           {this.badge(status, st)}
@@ -173,17 +176,38 @@ export default class StepList extends Component<Attrs> {
 
   private summaryView(st: StepStatus | null): Mithril.Children {
     const counts = st?.summary?.counts;
-    if (!counts || !Object.keys(counts).length) return null;
+    const warnings = st?.summary?.warnings ?? [];
+    const hasCounts = counts && Object.keys(counts).length > 0;
+    if (!hasCounts && warnings.length === 0) return null;
 
     return (
-      <div className="MmChips MmChips--summary">
-        {Object.entries(counts)
-          .slice(0, 10)
-          .map(([k, v]) => (
-            <span className="MmChip">
-              {k}: {Number(v).toLocaleString()}
-            </span>
-          ))}
+      <div>
+        {hasCounts && (
+          <div className="MmChips MmChips--summary">
+            {Object.entries(counts!)
+              .slice(0, 10)
+              .map(([k, v]) => (
+                <span className="MmChip">
+                  {k}: {Number(v).toLocaleString()}
+                </span>
+              ))}
+          </div>
+        )}
+        {warnings.length > 0 && (
+          <div className="MmWarnings">
+            <div className="MmWarnings-head">
+              {trans("steps.warnings", { count: warnings.length })}
+            </div>
+            {warnings.slice(0, 20).map((w) => (
+              <div className="MmWarn">⚠ {w}</div>
+            ))}
+            {warnings.length > 20 && (
+              <div className="MmWarn MmWarn--more">
+                {trans("steps.warnings_more", { count: warnings.length - 20 })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }

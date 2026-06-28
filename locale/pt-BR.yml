@@ -123,6 +123,9 @@ ramon-mybb-migrator:
       run: Rodar
       dry_run: Simular
       dangerous: destrutivo
+      manual: manual — rode individualmente
+      warnings: "{count} aviso(s) — itens já populados foram pulados; nada parou:"
+      warnings_more: "… e mais {count}"
       show_log: Log
       hide_log: Ocultar log
       reset: Resetar

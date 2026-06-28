@@ -69,7 +69,11 @@ return [
     new Extend\Locales(__DIR__ . '/locale'),
 
     (new Extend\Settings())
-        ->default('mybb-migrator.old_site_url', 'https://damnfineshave.com'),
+        ->default('mybb-migrator.old_site_url', 'https://damnfineshave.com')
+        // Segundos sem heartbeat (mtime do log) até o painel considerar um passo
+        // travado. Alto de propósito: operações silenciosas longas (COUNT/DELETE
+        // em massa) não devem ser marcadas como falha nem reabrir o guard.
+        ->default('mybb-migrator.stale_seconds', 600),
 
     (new Extend\Auth())
         ->addPasswordChecker('mybb-legacy', MybbPasswordChecker::class),

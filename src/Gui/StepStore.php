@@ -3,6 +3,7 @@
 namespace Ramon\MybbMigrator\Gui;
 
 use Flarum\Foundation\Paths;
+use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Database\ConnectionInterface;
 
 /**
@@ -12,15 +13,32 @@ use Illuminate\Database\ConnectionInterface;
  */
 class StepStore
 {
-    /** Segundos sem atualização no log até considerar um "running" travado. */
-    public const STALE_SECONDS = 90;
+    /**
+     * Segundos (default) sem atualização no log até considerar um "running"
+     * travado. Sobrescrevível por `mybb-migrator.stale_seconds`. Alto de
+     * propósito: um passo vivo em operação silenciosa longa NÃO pode virar falha
+     * (mentira na UI) nem reabrir o guard de concorrência (risco de spawn duplo).
+     */
+    public const STALE_SECONDS = 600;
+
+    /** Piso de segurança: nunca considerar travado abaixo disto. */
+    private const STALE_MIN = 120;
 
     private const TABLE = 'mybb_migration_steps';
 
     public function __construct(
         protected ConnectionInterface $db,
         protected Paths $paths,
+        protected SettingsRepositoryInterface $settings,
     ) {
+    }
+
+    /** Limiar de "travado" efetivo (setting, com piso de segurança). */
+    public function staleSeconds(): int
+    {
+        $v = (int) ($this->settings->get('mybb-migrator.stale_seconds') ?? self::STALE_SECONDS);
+
+        return max(self::STALE_MIN, $v);
     }
 
     public function logDir(): string
@@ -169,20 +187,22 @@ class StepStore
             return false;
         }
 
-        // Usa o mtime do log (escrito ao vivo) como heartbeat real; cai para
-        // updated_at se o log ainda não existir.
-        $mtime = $this->logMtime((string) ($row['step'] ?? ''));
-        if ($mtime !== null) {
-            return (time() - $mtime) > self::STALE_SECONDS;
-        }
+        $threshold = $this->staleSeconds();
 
+        // Usa o mais recente entre mtime do log e updated_at como heartbeat: um
+        // heartbeat() no banco conta mesmo se o log estiver parado, e vice-versa.
+        $mtime = $this->logMtime((string) ($row['step'] ?? ''));
         $updated = $row['updated_at'] ?? null;
-        if ($updated === null) {
+        $updatedTs = $updated === null
+            ? null
+            : (is_numeric($updated) ? (int) $updated : (int) strtotime((string) $updated));
+
+        $beat = max((int) $mtime, (int) $updatedTs);
+        if ($beat <= 0) {
             return false;
         }
-        $ts = is_numeric($updated) ? (int) $updated : (int) strtotime((string) $updated);
 
-        return $ts > 0 && (time() - $ts) > self::STALE_SECONDS;
+        return (time() - $beat) > $threshold;
     }
 
     private function now(): string
