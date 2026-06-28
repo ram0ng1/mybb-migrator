@@ -1,0 +1,144 @@
+ramon-mybb-migrator:
+  lib:
+    errors:
+      generic: Something went wrong. Please try again.
+      network: Network error. Check your connection and try again.
+
+  admin:
+    run_failed: Could not start the migration step.
+    cancel_failed: Could not complete the action.
+
+    tabs:
+      connection: Connection
+      migrate: Migration
+      compare: Compare
+      cleanup: Advanced / cleanup
+      diag: Diagnostics
+
+    connection:
+      title: MyBB database connection
+      intro: >-
+        Point this at the MyBB database. These are the same settings the CLI
+        commands use; the panel runs the very same migration in the background.
+      save_failed: Could not save the connection.
+      test_failed: Could not test the connection.
+      test: Test connection
+      save: Save
+      saved: Connection saved.
+      test_ok: Connected to MyBB.
+      test_fail: Connection failed
+      password_set: "(unchanged — leave blank to keep)"
+      password_empty: "(no password)"
+      php_binary: PHP binary (optional)
+      php_auto: Uses Flarum's PHP
+      php_from_flarum: same PHP as Flarum
+      php_override: manual override
+      php_none: Could not determine Flarum's PHP — set the path manually.
+      old_site_url: Old site URL (for the Compare tab)
+      old_site_hint: Base URL of the live MyBB forum, e.g. https://example.com — used to link/preview the original post.
+      fields:
+        host: Host
+        port: Port
+        user: User
+        password: Password
+        db: Database
+        prefix: Table prefix
+
+    preflight:
+      title: Pre-flight checks
+      legacy_table: "Legacy passwords table (run: php flarum migrate)"
+      steps_table: Migration status table
+      extensions: Target extensions
+      required: required
+
+    progress:
+      title: Progress (MyBB → Flarum)
+      no_source: Source counts unavailable — test the connection first.
+      entity:
+        users: Users
+        discussions: Discussions
+        posts: Posts
+        tags: Tags
+
+    run:
+      title: Recommended migration order
+      intro: >-
+        Run top to bottom. The order is enforced by ID / foreign-key
+        dependencies — groups before users, users & tags before content, content
+        before likes/mentions/etc. Run a whole phase, or individual steps.
+      phase1: Run Phase 1
+      phase2: Run Phase 2
+      all: Run Phase 1 + 2
+      running: "Running: {step}…"
+      cancel: Cancel
+
+    phases:
+      "0":
+        title: "Phase 0 — Preparation (optional)"
+        desc: Wipe existing Flarum content for a clean re-run (keeps schema, core groups and settings). Destructive.
+      "1":
+        title: "Phase 1 — Core (order matters)"
+        desc: "Groups → Users → Avatars → Tags → Content → Likes → Permissions → Forum perms. IDs and foreign keys depend on this order."
+      "2":
+        title: "Phase 2 — Secondary content"
+        desc: "Runs after users and content exist: subscriptions, private messages, polls, trader feedback, reviews, and promoting your admin."
+
+    compare:
+      title: Compare formatting (old × Flarum)
+      intro: Enter a post ID (same id on both sides — IDs are preserved) to compare the original MyBB post with the migrated Flarum render.
+      pid_placeholder: Post ID
+      compare: Compare
+      random: Random post
+      old: Old (MyBB)
+      flarum: Flarum
+      open_old: Open on old site
+      old_unavailable: Could not load the old post inline (login required, offline, or different theme). Use the link above and the source below.
+      iframe_note: If the frame stays blank, the old site is behind a bot-check (Cloudflare) or blocks embedding — use "Open on old site" above.
+      show_bbcode: Show original BBCode
+      no_mybb: Post not found in the MyBB source.
+      not_migrated: This post was not migrated to Flarum yet.
+      none_found: No post found. Migrate first, or enter a valid post ID.
+      cant_embed: "The old site can't be embedded here (X-Frame-Options / Cloudflare). Open it in a new tab to compare with the Flarum render and the source BBCode below."
+      bbcode_label: Original BBCode (MyBB source)
+      from_db: Rendered from the database (MyBB approximation)
+      from_site: From the live old site
+      failed: Could not load the comparison.
+
+    cleanup:
+      warning: >-
+        These are data-specific fidelity passes. Some are opposites of each
+        other — do not run them all blindly. Run Phases 1–2 first, look at the
+        forum, then apply only what you need.
+
+    status:
+      pending: Pending
+      running: Running
+      done: Done
+      failed: Failed
+      skipped: Skipped
+      stale: Stalled?
+
+    steps:
+      run: Run
+      dry_run: Dry-run
+      dangerous: destructive
+      show_log: Log
+      hide_log: Hide log
+      reset: Reset
+      confirm_dangerous: "Run {name}? This is destructive."
+      desc:
+        wipe: Clears Flarum content for a clean re-run (keeps schema, core groups and settings).
+        groups: Custom groups (gid≥8), IDs preserved.
+        users: Users (uid=id), captures passwords, maps roles.
+        avatars: Backfills users.avatar_url.
+        tags: Forums → tags (fid=id) + hierarchy.
+        content: Threads → discussions, posts → posts, BBCode→Flarum, mentions.
+        likes: Post likes.
+        permissions: Default + custom-group permissions.
+        forum-perms: Per-forum view restrictions → tag permissions.
+        subscriptions: Thread/forum follows.
+        messages: Private messages → fof/byobu.
+        polls: Polls + votes → fof/polls.
+        trade-feedback: iTrader feedback → traderfeedback.
+        reviews: Community Reviews → traderfeedback.
+        make-admin: Promote your account to Admin (set the username).

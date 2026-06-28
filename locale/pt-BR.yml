@@ -1,0 +1,145 @@
+ramon-mybb-migrator:
+  lib:
+    errors:
+      generic: Algo deu errado. Tente novamente.
+      network: Erro de rede. Verifique a conexão e tente novamente.
+
+  admin:
+    run_failed: Não foi possível iniciar o passo de migração.
+    cancel_failed: Não foi possível concluir a ação.
+
+    tabs:
+      connection: Conexão
+      migrate: Migração
+      compare: Comparar
+      cleanup: Avançado / limpeza
+      diag: Diagnóstico
+
+    connection:
+      title: Conexão com o banco MyBB
+      intro: >-
+        Aponte para o banco do MyBB. São as mesmas configurações que os comandos
+        de CLI usam; o painel roda exatamente a mesma migração ao fundo.
+      save_failed: Não foi possível salvar a conexão.
+      test_failed: Não foi possível testar a conexão.
+      test: Testar conexão
+      save: Salvar
+      saved: Conexão salva.
+      test_ok: Conectado ao MyBB.
+      test_fail: Falha na conexão
+      password_set: "(inalterada — deixe em branco para manter)"
+      password_empty: "(sem senha)"
+      php_binary: Binário PHP (opcional)
+      php_auto: Usa o PHP do Flarum
+      php_from_flarum: mesmo PHP do Flarum
+      php_override: caminho manual
+      php_none: Não foi possível determinar o PHP do Flarum — informe o caminho manualmente.
+      old_site_url: URL do site antigo (para a aba Comparar)
+      old_site_hint: "URL base do fórum MyBB no ar, ex.: https://exemplo.com — usada para abrir/pré-visualizar o post original."
+      fields:
+        host: Host
+        port: Porta
+        user: Usuário
+        password: Senha
+        db: Banco de dados
+        prefix: Prefixo das tabelas
+
+    preflight:
+      title: Pré-checagem
+      legacy_table: "Tabela de senhas legadas (rode: php flarum migrate)"
+      steps_table: Tabela de status da migração
+      extensions: Extensões-alvo
+      required: obrigatória
+
+    progress:
+      title: Progresso (MyBB → Flarum)
+      no_source: Contagens de origem indisponíveis — teste a conexão primeiro.
+      entity:
+        users: Usuários
+        discussions: Discussões
+        posts: Posts
+        tags: Tags
+
+    run:
+      title: Ordem recomendada de migração
+      intro: >-
+        Rode de cima para baixo. A ordem é exigida pelas dependências de IDs /
+        chaves estrangeiras — grupos antes de usuários, usuários e tags antes do
+        conteúdo, conteúdo antes de curtidas/menções/etc. Rode uma fase inteira
+        ou passos individuais.
+      phase1: Rodar Fase 1
+      phase2: Rodar Fase 2
+      all: Rodar Fase 1 + 2
+      running: "Executando: {step}…"
+      cancel: Cancelar
+
+    phases:
+      "0":
+        title: "Fase 0 — Preparação (opcional)"
+        desc: Limpa o conteúdo atual do Flarum para recomeçar (mantém schema, grupos base e configurações). Destrutivo.
+      "1":
+        title: "Fase 1 — Núcleo (a ordem importa)"
+        desc: "Grupos → Usuários → Avatares → Tags → Conteúdo → Curtidas → Permissões → Permissões de fórum. IDs e chaves estrangeiras dependem desta ordem."
+      "2":
+        title: "Fase 2 — Conteúdo secundário"
+        desc: "Roda depois que usuários e conteúdo existem: inscrições, mensagens privadas, enquetes, feedback de trade, avaliações e promover seu admin."
+
+    compare:
+      title: Comparar formatação (antigo × Flarum)
+      intro: Informe o ID de um post (mesmo id dos dois lados — os IDs são preservados) para comparar o post original do MyBB com o renderizado no Flarum.
+      pid_placeholder: ID do post
+      compare: Comparar
+      random: Post aleatório
+      old: Antigo (MyBB)
+      flarum: Flarum
+      open_old: Abrir no site antigo
+      old_unavailable: Não foi possível carregar o post antigo embutido (exige login, offline ou tema diferente). Use o link acima e o código-fonte abaixo.
+      iframe_note: Se o quadro ficar em branco, o site antigo está atrás de uma verificação anti-bot (Cloudflare) ou bloqueia incorporação — use "Abrir no site antigo" acima.
+      show_bbcode: Mostrar BBCode original
+      no_mybb: Post não encontrado na origem MyBB.
+      not_migrated: Este post ainda não foi migrado para o Flarum.
+      none_found: Nenhum post encontrado. Migre primeiro, ou informe um ID de post válido.
+      cant_embed: "O site antigo não pode ser embutido aqui (X-Frame-Options / Cloudflare). Abra em nova aba para comparar com o render do Flarum e o BBCode de origem abaixo."
+      bbcode_label: BBCode original (origem MyBB)
+      from_db: Renderizado do banco (aproximação do MyBB)
+      from_site: Do site antigo no ar
+      failed: Não foi possível carregar a comparação.
+
+    cleanup:
+      warning: >-
+        São passagens de fidelidade específicas dos dados. Algumas são opostas
+        entre si — não rode todas às cegas. Faça as Fases 1–2 primeiro, olhe o
+        fórum e aplique só o que precisar.
+
+    status:
+      pending: Pendente
+      running: Executando
+      done: Concluído
+      failed: Falhou
+      skipped: Ignorado
+      stale: Travado?
+
+    steps:
+      run: Rodar
+      dry_run: Simular
+      dangerous: destrutivo
+      show_log: Log
+      hide_log: Ocultar log
+      reset: Resetar
+      confirm_dangerous: "Rodar {name}? Esta ação é destrutiva."
+      desc:
+        wipe: Limpa o conteúdo do Flarum para recomeçar (mantém schema, grupos base e configurações).
+        groups: Grupos personalizados (gid≥8), IDs preservados.
+        users: Usuários (uid=id), captura senhas, mapeia papéis.
+        avatars: Preenche users.avatar_url.
+        tags: Fóruns → tags (fid=id) + hierarquia.
+        content: Tópicos → discussões, posts → posts, BBCode→Flarum, menções.
+        likes: Curtidas de posts.
+        permissions: Permissões padrão + de grupos personalizados.
+        forum-perms: Restrições de visualização por fórum → permissões de tag.
+        subscriptions: Acompanhamentos de tópico/fórum.
+        messages: Mensagens privadas → fof/byobu.
+        polls: Enquetes + votos → fof/polls.
+        trade-feedback: Feedback do iTrader → traderfeedback.
+        reviews: Avaliações da comunidade → traderfeedback.
+        make-admin: Promove sua conta a Admin (informe o usuário).

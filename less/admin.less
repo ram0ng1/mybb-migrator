@@ -1,0 +1,581 @@
+.MmDashboard {
+  --mm-border: #e3e6ea;
+  --mm-muted: #8a929c;
+  --mm-ok: #2e7d32;
+  --mm-err: #c62828;
+  --mm-warn: #b26a00;
+  --mm-run: #1d4ed8;
+
+  font-size: 14px;
+}
+
+.MmMuted {
+  color: var(--mm-muted);
+}
+
+.MmDashboard-body {
+  margin-top: 16px;
+}
+
+// ---- Tabs ----
+.MmTabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--mm-border);
+}
+
+.MmTab {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--mm-muted);
+  font-weight: 600;
+
+  i {
+    margin-right: 6px;
+  }
+
+  &.is-active {
+    color: var(--mm-run);
+    border-bottom-color: var(--mm-run);
+  }
+}
+
+// ---- Cards ----
+.MmCard {
+  background: #fff;
+  border: 1px solid var(--mm-border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+
+  h4 {
+    margin: 0 0 4px;
+  }
+  h5 {
+    margin: 16px 0 6px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--mm-muted);
+  }
+}
+
+// ---- Connection form ----
+.MmGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.MmField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  label {
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  &--wide {
+    margin: 8px 0;
+  }
+}
+
+.MmActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.MmHint {
+  margin-top: 6px;
+  font-size: 12px;
+  font-family: monospace;
+  word-break: break-all;
+
+  &--ok {
+    color: var(--mm-ok);
+  }
+  &--error {
+    color: var(--mm-err);
+  }
+}
+
+// ---- Alerts ----
+.MmAlert {
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 12px 0;
+  font-size: 13px;
+
+  &--ok {
+    background: #e8f5e9;
+    color: var(--mm-ok);
+  }
+  &--error {
+    background: #fdecea;
+    color: var(--mm-err);
+  }
+  &--warn {
+    background: #fff4e0;
+    color: var(--mm-warn);
+  }
+}
+
+// ---- Chips ----
+.MmChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.MmChip {
+  background: #eef1f5;
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+// ---- Preflight ----
+.MmCheckList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  &--exts {
+    columns: 2;
+    @media (max-width: 600px) {
+      columns: 1;
+    }
+  }
+}
+
+.MmCheck {
+  padding: 3px 0;
+  font-size: 13px;
+
+  &-icon {
+    display: inline-block;
+    width: 18px;
+    font-weight: 700;
+  }
+  &.is-ok .MmCheck-icon {
+    color: var(--mm-ok);
+  }
+  &.is-off .MmCheck-icon {
+    color: var(--mm-muted);
+  }
+  &.is-danger {
+    color: var(--mm-err);
+    font-weight: 600;
+    .MmCheck-icon {
+      color: var(--mm-err);
+    }
+  }
+}
+
+// ---- Progress bars ----
+.MmProgress-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.MmProgress-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 140px;
+  align-items: center;
+  gap: 10px;
+}
+
+.MmProgress-label {
+  font-weight: 600;
+}
+
+.MmProgress-bar {
+  background: #eef1f5;
+  border-radius: 6px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.MmProgress-fill {
+  background: var(--mm-run);
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
+.MmProgress-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+// ---- Steps ----
+.MmSteps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.MmStep {
+  background: #fff;
+  border: 1px solid var(--mm-border);
+  border-left: 4px solid var(--mm-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+
+  &--running {
+    border-left-color: var(--mm-run);
+  }
+  &--done {
+    border-left-color: var(--mm-ok);
+  }
+  &--failed {
+    border-left-color: var(--mm-err);
+  }
+
+  &-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+
+  &-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  &-name {
+    font-weight: 700;
+  }
+
+  &-cmd {
+    font-size: 12px;
+    color: var(--mm-muted);
+    background: #f5f6f8;
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  &-danger {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--mm-err);
+    font-weight: 700;
+  }
+
+  &-desc {
+    margin: 6px 0;
+    color: var(--mm-muted);
+    font-size: 13px;
+  }
+
+  &-opts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 8px 0;
+  }
+
+  &-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+}
+
+.MmOpt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+
+  input[type="checkbox"] {
+    margin: 0;
+  }
+}
+
+.FormControl--sm {
+  width: 110px;
+  height: 28px;
+  padding: 2px 8px;
+}
+
+.Button--sm {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+// ---- Badges ----
+.MmBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 12px;
+  background: #eef1f5;
+  color: var(--mm-muted);
+  white-space: nowrap;
+
+  &--running {
+    background: #e7edff;
+    color: var(--mm-run);
+  }
+  &--done {
+    background: #e8f5e9;
+    color: var(--mm-ok);
+  }
+  &--failed {
+    background: #fdecea;
+    color: var(--mm-err);
+  }
+  &--stale {
+    background: #fff4e0;
+    color: var(--mm-warn);
+  }
+}
+
+// ---- Running banner ----
+.MmRunning {
+  border: 1px solid var(--mm-run);
+  background: #f5f8ff;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+
+  &-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+}
+
+// ---- Console ----
+.MmConsole {
+  background: #11151c;
+  color: #d6deeb;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 10px 0 0;
+  max-height: 320px;
+  overflow: auto;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// ---- Phase sections (recommended order) ----
+.MmGuide {
+  border-left: 4px solid var(--mm-run);
+}
+
+.MmPhase {
+  margin: 18px 0 8px;
+
+  &-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  &-title {
+    margin: 0;
+  }
+
+  &-desc {
+    margin: 2px 0 0;
+    color: var(--mm-muted);
+    font-size: 13px;
+    max-width: 70ch;
+  }
+}
+
+.MmStep-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--mm-run);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+
+// ---- Compare ----
+.MmCompare-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+
+  .FormControl {
+    max-width: 200px;
+  }
+}
+
+.MmCompare-meta {
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+.MmCompare-title {
+  color: var(--mm-muted);
+}
+
+.MmCompare-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+
+  @media (max-width: 820px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.MmCompare-col {
+  border: 1px solid var(--mm-border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.MmCompare-colhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f5f6f8;
+  font-weight: 700;
+  border-bottom: 1px solid var(--mm-border);
+}
+
+.MmCompare-open {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.MmCompare-frame {
+  width: 100%;
+  height: 360px;
+  border: 0;
+  background: #fff;
+}
+
+.MmCompare-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.MmCompare-cant {
+  background: #fff4e0;
+  border-radius: 6px;
+  padding: 14px;
+  text-align: center;
+
+  p {
+    margin: 0 0 10px;
+  }
+}
+
+.MmCompare-srclabel {
+  font-size: 11px;
+  color: var(--mm-muted);
+  margin-bottom: 6px;
+  font-style: italic;
+}
+
+.MmCompare-bbcode {
+  summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--mm-run);
+  }
+}
+
+.MmCompare-bblabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--mm-muted);
+  margin-bottom: 4px;
+}
+
+.MmCompare-flarum {
+  background: #fff;
+  overflow: auto;
+  max-height: 420px;
+
+  blockquote {
+    border-left: 3px solid #ccc;
+    margin: 8px 0;
+    padding: 4px 10px;
+    color: #555;
+  }
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+.MmCompare-src {
+  padding: 8px 12px;
+
+  summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--mm-run);
+  }
+}
+
+.MmConsole--light {
+  background: #f5f6f8;
+  color: #222;
+  max-height: 220px;
+}
+
+// ---- Spinner ----
+.MmSpinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: mm-spin 0.8s linear infinite;
+}
+
+@keyframes mm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

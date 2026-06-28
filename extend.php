@@ -3,8 +3,16 @@
 namespace Ramon\MybbMigrator;
 
 use Flarum\Extend;
+use Ramon\MybbMigrator\Api\Controller\CancelController;
+use Ramon\MybbMigrator\Api\Controller\ComparePostController;
+use Ramon\MybbMigrator\Api\Controller\LogController;
+use Ramon\MybbMigrator\Api\Controller\RunStepController;
+use Ramon\MybbMigrator\Api\Controller\SaveConnectionController;
+use Ramon\MybbMigrator\Api\Controller\StatusController;
+use Ramon\MybbMigrator\Api\Controller\TestConnectionController;
 use Ramon\MybbMigrator\Auth\MybbPasswordChecker;
 use Ramon\MybbMigrator\Console\FixCharsetCommand;
+use Ramon\MybbMigrator\Console\GuiRunCommand;
 use Ramon\MybbMigrator\Console\FixDiscussionSlugsCommand;
 use Ramon\MybbMigrator\Console\FixEmojisCommand;
 use Ramon\MybbMigrator\Console\FixFontBbcodeCommand;
@@ -54,10 +62,29 @@ return [
     (new Extend\Frontend('forum'))
         ->css(__DIR__ . '/less/signature.less'),
 
+    (new Extend\Frontend('admin'))
+        ->css(__DIR__ . '/less/admin.less')
+        ->js(__DIR__ . '/js/dist/admin.js'),
+
+    new Extend\Locales(__DIR__ . '/locale'),
+
+    (new Extend\Settings())
+        ->default('mybb-migrator.old_site_url', 'https://damnfineshave.com'),
+
     (new Extend\Auth())
         ->addPasswordChecker('mybb-legacy', MybbPasswordChecker::class),
 
+    (new Extend\Routes('api'))
+        ->get('/mybb-migrator/status', 'mybb-migrator.status', StatusController::class)
+        ->post('/mybb-migrator/connection', 'mybb-migrator.connection.save', SaveConnectionController::class)
+        ->post('/mybb-migrator/test', 'mybb-migrator.connection.test', TestConnectionController::class)
+        ->post('/mybb-migrator/run', 'mybb-migrator.run', RunStepController::class)
+        ->post('/mybb-migrator/cancel', 'mybb-migrator.cancel', CancelController::class)
+        ->get('/mybb-migrator/log', 'mybb-migrator.log', LogController::class)
+        ->get('/mybb-migrator/compare', 'mybb-migrator.compare', ComparePostController::class),
+
     (new Extend\Console())
+        ->command(GuiRunCommand::class)
         ->command(WipeCommand::class)
         ->command(MigrateGroupsCommand::class)
         ->command(MigrateUsersCommand::class)

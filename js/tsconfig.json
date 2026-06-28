@@ -1,0 +1,25 @@
+{
+  // Use Flarum's tsconfig as a starting point
+  "extends": "flarum-tsconfig",
+  // Match .ts/.tsx/.d.ts files in `src` plus core's global typings. The two
+  // `vendor` globs cover both the symlinked-into-vendor layout and the
+  // workbench layout (flarum/workbench/mybb-migrator sharing flarum/vendor).
+  "include": [
+    "src/**/*",
+    "../vendor/*/*/js/dist-typings/@types/**/*",
+    "../../../vendor/*/*/js/dist-typings/@types/**/*",
+    "@types/**/*"
+  ],
+  "compilerOptions": {
+    "rootDir": "./src",
+    "declarationDir": "./dist-typings",
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "flarum/*": [
+        "../vendor/flarum/core/js/dist-typings/*",
+        "../../../vendor/flarum/core/js/dist-typings/*"
+      ]
+    }
+  }
+}
