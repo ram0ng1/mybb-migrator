@@ -36,7 +36,7 @@ class StepCatalog
             self::s('avatars',     'mybb:avatars',     '1', options: ['skip-file-check']),
             self::s('tags',        'mybb:tags',        '1'),
             self::s('content',     'mybb:content',     '1', options: ['limit', 'skip-soft-deleted']),
-            self::s('likes',       'mybb:likes',       '1'),
+            self::s('likes',       'mybb:likes',       '1', options: ['recover-likers']),
             self::s('permissions', 'mybb:permissions', '1'),
             self::s('forum-perms', 'mybb:forum-perms', '1'),
 

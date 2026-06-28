@@ -32,7 +32,9 @@ class MigrateLikesCommand extends AbstractCommand
         $this
             ->setName('mybb:likes')
             ->setDescription('Migrate MyBB likes (dfsmybb_post_likes) to flarum/likes.')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.');
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.')
+            ->addOption('recover-likers', null, InputOption::VALUE_NONE,
+                'Recupera curtidas de usuários apagados criando contas-fantasma (deleted-<uid>) para preservar a contagem. Curtidas de posts inexistentes seguem impossíveis.');
         $this->addMybbConnectionOptions();
     }
 
@@ -73,8 +75,11 @@ class MigrateLikesCommand extends AbstractCommand
         $postIds = $this->loadIdSet('posts');
         $userIds = $this->loadIdSet('users');
 
+        $recover = (bool) $this->input->getOption('recover-likers');
+
         $batch = [];
-        $inserted = 0; $skipped = 0;
+        $inserted = 0; $skipped = 0; $skippedNoPost = 0; $skippedNoUser = 0;
+        $ghosts = []; $recoveredLikes = 0; $warnings = [];
 
         try {
             $sql = "SELECT {$postColumn} AS pid, {$userColumn} AS uid, {$dateSelect} FROM {$table} ORDER BY {$postColumn}";
@@ -82,9 +87,30 @@ class MigrateLikesCommand extends AbstractCommand
                 $pid = (int) $row['pid'];
                 $uid = (int) $row['uid'];
 
-                if (! isset($postIds[$pid]) || ! isset($userIds[$uid])) {
-                    $skipped++;
+                // Post inexistente no Flarum (apagado no MyBB): irrecuperável —
+                // não há onde anexar a curtida.
+                if (! isset($postIds[$pid])) {
+                    $skipped++; $skippedNoPost++;
                     continue;
+                }
+
+                // Usuário ausente (conta apagada do MyBB). Sem --recover-likers,
+                // pula. Com a flag, cria uma conta-fantasma (deleted-<uid>) p/
+                // preservar a curtida e a contagem do post.
+                if (! isset($userIds[$uid])) {
+                    if (! $recover) {
+                        $skipped++; $skippedNoUser++;
+                        continue;
+                    }
+                    $this->ensureGhostUser($uid, $userIds, $ghosts, $warnings);
+                    if (! isset($userIds[$uid])) {
+                        // criação falhou (aviso já registrado) — pula sem travar
+                        $skipped++; $skippedNoUser++;
+                        continue;
+                    }
+                }
+                if (isset($ghosts[$uid])) {
+                    $recoveredLikes++;
                 }
 
                 $ts = (int) ($row['ts'] ?? 0);
@@ -115,7 +141,52 @@ class MigrateLikesCommand extends AbstractCommand
         }
 
         $this->info("Done. inserted={$inserted}, skipped={$skipped}");
+        $this->info("  skipped (post inexistente no Flarum): {$skippedNoPost}");
+        $this->info("  skipped (usuário ausente): {$skippedNoUser}");
+        if ($recover) {
+            $this->info("  contas-fantasma criadas: " . count($ghosts));
+            $this->info("  curtidas recuperadas: {$recoveredLikes}");
+        }
+        foreach ($warnings as $w) {
+            $this->info('⚠ ' . $w);
+        }
+
         return 0;
+    }
+
+    /**
+     * Cria (uma vez) uma conta-fantasma para um liker apagado do MyBB, com o uid
+     * preservado, para que a curtida possa ser anexada e a contagem do post
+     * fique fiel. Conta inerte: e-mail sintético, sem senha, não confirmada.
+     *
+     * @param array<int, bool> $userIds  conjunto de ids válidos (atualizado)
+     * @param array<int, bool> $ghosts   uids criados nesta execução (atualizado)
+     * @param array<int, string> $warnings
+     */
+    private function ensureGhostUser(int $uid, array &$userIds, array &$ghosts, array &$warnings): void
+    {
+        if (isset($userIds[$uid])) {
+            return;
+        }
+
+        try {
+            $this->db->table('users')->insert([
+                'id'                 => $uid,
+                'username'           => 'deleted-' . $uid,
+                'email'              => 'deleted-' . $uid . '@deleted.invalid',
+                'is_email_confirmed' => 0,
+                'password'           => '',
+                'joined_at'          => date('Y-m-d H:i:s'),
+                'discussion_count'   => 0,
+                'comment_count'      => 0,
+            ]);
+            $userIds[$uid] = true;
+            $ghosts[$uid] = true;
+        } catch (\Throwable $e) {
+            if (count($warnings) < 50) {
+                $warnings[] = "conta-fantasma uid={$uid} não criada: " . trim(explode("\n", $e->getMessage())[0]);
+            }
+        }
     }
 
     /**

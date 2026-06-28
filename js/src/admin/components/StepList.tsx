@@ -15,7 +15,7 @@ interface Attrs extends ComponentAttrs {
   numbered?: boolean;
 }
 
-const BOOL_OPTS = ["dry-run", "like", "skip-file-check", "skip-soft-deleted"];
+const BOOL_OPTS = ["dry-run", "like", "skip-file-check", "skip-soft-deleted", "recover-likers"];
 
 const trans = (key: string, args: Record<string, unknown> = {}): string =>
   extractText(app.translator.trans(`ramon-mybb-migrator.admin.${key}`, args));
