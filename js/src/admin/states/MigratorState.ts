@@ -1,3 +1,6 @@
+import app from "flarum/admin/app";
+import extractText from "flarum/common/utils/extractText";
+
 import apiCall, { apiUrl } from "../utils/apiCall";
 import type {
   CompareResult,
@@ -107,11 +110,19 @@ export default class MigratorState {
 
   async run(payload: RunPayload): Promise<unknown> {
     this.busy = true;
-    const res = await apiCall(
+    const res = await apiCall<{ note?: string }>(
       { method: "POST", url: `${apiUrl()}/mybb-migrator/run`, body: payload },
       { errorKey: "ramon-mybb-migrator.admin.run_failed" },
     );
     this.busy = false;
+    // Sequência cujos passos já estavam todos concluídos: avisa (senão o clique
+    // parece não fazer nada). Para re-rodar um passo concluído, use "Resetar".
+    if (res?.note === "all-done") {
+      app.alerts.show(
+        { type: "success" },
+        extractText(app.translator.trans("ramon-mybb-migrator.admin.run.all_done")),
+      );
+    }
     await this.refresh(false);
     return res;
   }

@@ -25,7 +25,7 @@ ramon-mybb-migrator:
       test: Test connection
       save: Save
       saved: Connection saved.
-      test_ok: Connected to MyBB.
+      test_ok: Connected to MyBB — connection saved and now used by the migration.
       test_fail: Connection failed
       password_set: "(unchanged — leave blank to keep)"
       password_empty: "(no password)"
@@ -71,6 +71,7 @@ ramon-mybb-migrator:
       all: Run Phase 1 + 2
       running: "Running: {step}…"
       cancel: Cancel
+      all_done: Every step in this sequence is already done — nothing to run. Use “Reset” on a step to run it again.
 
     phases:
       "0":

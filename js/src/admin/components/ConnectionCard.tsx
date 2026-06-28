@@ -231,6 +231,12 @@ export default class ConnectionCard extends Component<Attrs> {
 
   private async onTest(): Promise<void> {
     this.testResult = await this.attrs.state.test(this.form);
+    // Teste verde já PERSISTE a conexão: o processo CLI lê os settings salvos
+    // (não o form), então o que está na tela passa a ser o que a migração usa.
+    if (this.testResult?.ok) {
+      await this.attrs.state.saveConnection(this.form);
+      this.form.password = "";
+    }
     m.redraw();
   }
 

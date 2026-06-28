@@ -12,6 +12,7 @@ use Ramon\MybbMigrator\Gui\PhpBinaryLocator;
 use Ramon\MybbMigrator\Gui\ProcessRunner;
 use Ramon\MybbMigrator\Gui\StepCatalog;
 use Ramon\MybbMigrator\Gui\StepStore;
+use Ramon\MybbMigrator\MybbDatabase;
 
 /**
  * Dispara um ou mais passos como processo CLI em background. Aceita:
@@ -36,6 +37,13 @@ class RunStepController implements RequestHandlerInterface
 
         $body = (array) $request->getParsedBody();
 
+        // Sequência (Rodar Fase/tudo) vs passo avulso (botão Rodar de um card).
+        // Numa sequência aplicamos RESUMO: passos já 'done' são pulados, então
+        // reabrir o botão após corrigir uma falha continua de onde parou, sem
+        // refazer o que já passou nem exigir rodar cada passo na mão. Um passo
+        // avulso é sempre explícito (roda mesmo se já estava 'done').
+        $isSequence = ! empty($body['sequence']) || (! empty($body['steps']) && is_array($body['steps']));
+
         $steps = $this->resolveSteps($body);
         if ($steps === []) {
             return new JsonResponse(['error' => 'no-steps'], 422);
@@ -51,7 +59,11 @@ class RunStepController implements RequestHandlerInterface
         // Reconcilia mortos e impede execução concorrente.
         $this->store->clearStale();
         if (($running = $this->store->runningStep()) !== null) {
-            return new JsonResponse(['error' => 'already-running', 'running' => $running], 409);
+            return $this->fail(
+                'already-running',
+                "Já existe um passo em execução ({$running}). Aguarde terminar ou use Cancelar.",
+                409
+            );
         }
 
         // Usa o mesmo PHP do Flarum (ou o override informado). Validação com
@@ -63,11 +75,46 @@ class RunStepController implements RequestHandlerInterface
             // Inclui o caminho resolvido e o motivo (ex.: 'proc-open-disabled',
             // 'sapi:fpm-fcgi', 'not-executable') para diagnóstico — sob Docker o
             // PHP_BINARY costuma ser o php-fpm, que não roda como CLI.
-            return new JsonResponse([
-                'error'    => 'no-php-cli',
-                'resolved' => $php,
-                'reason'   => $check['error'] ?? 'unknown',
-            ], 422);
+            return $this->fail(
+                'no-php-cli',
+                "PHP CLI inválido (resolvido: " . ($php ?: '—') . ", motivo: " . ($check['error'] ?? 'desconhecido') . "). "
+                . 'Defina o caminho do PHP na aba Conexão e Salve.'
+            );
+        }
+
+        // Pré-checa a conexão MyBB com os settings JÁ SALVOS (que é o que o
+        // processo CLI vai usar — não o que está digitado no form). Evita lançar
+        // um processo em background fadado a falhar e mostra o erro na hora.
+        $mybbHost = (string) ($this->settings->get('mybb_host') ?: '127.0.0.1');
+        try {
+            MybbDatabase::fromSettings($this->settings)->pdo()->query('SELECT 1');
+        } catch (\Throwable $e) {
+            return $this->fail(
+                'mybb-unreachable',
+                "Não foi possível conectar ao banco do MyBB salvo (host: {$mybbHost}). "
+                . 'Na aba Conexão, confira os campos e clique em Salvar (o botão Testar não salva). '
+                . 'Detalhe: ' . $e->getMessage()
+            );
+        }
+
+        // Resumo: numa sequência, pula os passos já concluídos (status 'done').
+        // Mantém a ordem; só passos avulsos forçam re-execução de um 'done'.
+        $skippedDone = [];
+        if ($isSequence) {
+            $rows = $this->store->all();
+            $skippedDone = array_values(array_filter(
+                $steps,
+                static fn ($k) => ($rows[$k]['status'] ?? null) === 'done'
+            ));
+            $steps = array_values(array_filter(
+                $steps,
+                static fn ($k) => ($rows[$k]['status'] ?? null) !== 'done'
+            ));
+
+            if ($steps === []) {
+                // Tudo já concluído: nada a fazer (a UI já mostra tudo verde).
+                return new JsonResponse(['ok' => true, 'steps' => [], 'note' => 'all-done'], 200);
+            }
         }
 
         $extra = isset($body['extra']) && is_array($body['extra']) ? $body['extra'] : [];
@@ -81,10 +128,25 @@ class RunStepController implements RequestHandlerInterface
             $this->runner->spawn($php, $steps, $extra);
         } catch (\Throwable $e) {
             $this->store->markFinished($first, 1, ['error' => 'spawn falhou: ' . $e->getMessage()]);
-            return new JsonResponse(['error' => 'spawn-failed', 'message' => $e->getMessage()], 500);
+            return $this->fail('spawn-failed', 'Falha ao iniciar o processo de migração: ' . $e->getMessage(), 500);
         }
 
-        return new JsonResponse(['ok' => true, 'steps' => $steps], 202);
+        return new JsonResponse(['ok' => true, 'steps' => $steps, 'skipped_done' => $skippedDone], 202);
+    }
+
+    /**
+     * Erro no formato JSON:API ({errors:[{detail}]}) para que o front mostre a
+     * mensagem (detail) diretamente no alerta, em vez de um texto genérico.
+     */
+    private function fail(string $code, string $detail, int $status = 422): JsonResponse
+    {
+        return new JsonResponse([
+            'errors' => [[
+                'status' => (string) $status,
+                'code'   => $code,
+                'detail' => $detail,
+            ]],
+        ], $status);
     }
 
     /**
