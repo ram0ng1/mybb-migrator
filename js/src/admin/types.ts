@@ -16,6 +16,8 @@ export interface StepDef {
   requiresUsername: boolean;
   /** Fora das sequências guiadas (Rodar Fase / Rodar tudo); só execução individual. */
   manual: boolean;
+  /** Flags sempre passados ao comando (ex.: passwords-only), sem UI. */
+  fixedArgs?: string[];
 }
 
 export interface StepSummary {

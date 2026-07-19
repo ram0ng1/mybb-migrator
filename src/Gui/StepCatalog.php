@@ -18,6 +18,8 @@ namespace Ramon\MybbMigrator\Gui;
  *  - dangerous:  pede confirmação no painel (wipe / revert-* destrutivos)
  *  - options:    opções extras suportadas pelo comando, expostas na UI
  *                (dry-run, limit, username, ...) — ver addOption() de cada um
+ *  - fixedArgs:  flags SEMPRE passados ao comando (além de --force), sem UI —
+ *                reusa um comando num modo específico (ex.: users --passwords-only)
  */
 class StepCatalog
 {
@@ -79,6 +81,11 @@ class StepCatalog
             self::s('recover-protected',    'mybb:recover-protected',    '3'),
 
             // ---- Diagnóstico ----
+            // Levar só as senhas legadas para um Flarum já populado (ex.: produção
+            // migrada por dump do banco, sem a tabela mybb_legacy_passwords). Roda
+            // `mybb:users --passwords-only`: preenche a companheira para quem já
+            // existe e não tem linha, sem tocar em users/grupos.
+            self::s('legacy-passwords', 'mybb:users', 'diag', fixedArgs: ['passwords-only'], options: ['dry-run']),
             self::s('test-credentials', 'mybb:test-credentials', 'diag', options: ['username']),
         ];
     }
@@ -141,6 +148,7 @@ class StepCatalog
         array $options = [],
         bool $requiresUsername = false,
         bool $manual = false,
+        array $fixedArgs = [],
     ): array {
         return [
             'key'              => $key,
@@ -151,6 +159,7 @@ class StepCatalog
             'options'          => $options,
             'requiresUsername' => $requiresUsername,
             'manual'           => $manual,
+            'fixedArgs'        => $fixedArgs,
         ];
     }
 }

@@ -147,3 +147,4 @@ ramon-mybb-migrator:
         trade-feedback: Feedback do iTrader → traderfeedback.
         reviews: Avaliações da comunidade → traderfeedback.
         make-admin: Promove sua conta a Admin (informe o usuário).
+        legacy-passwords: Preenche mybb_legacy_passwords para usuários já existentes (leva as senhas do MyBB a um Flarum já migrado). Pula quem já tem linha.

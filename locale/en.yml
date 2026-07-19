@@ -146,3 +146,4 @@ ramon-mybb-migrator:
         trade-feedback: iTrader feedback → traderfeedback.
         reviews: Community Reviews → traderfeedback.
         make-admin: Promote your account to Admin (set the username).
+        legacy-passwords: Backfill mybb_legacy_passwords for existing users (carry MyBB passwords to an already-migrated Flarum). Skips users that already have a row.

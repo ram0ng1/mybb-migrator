@@ -133,6 +133,11 @@ class GuiRunCommand extends AbstractCommand
             $args['--force'] = true;
         }
 
+        // Flags fixos do passo (ex.: --passwords-only): sempre passados, sem UI.
+        foreach ((array) ($def['fixedArgs'] ?? []) as $flag) {
+            $args['--' . $flag] = true;
+        }
+
         $allowed = (array) ($def['options'] ?? []);
         foreach ($opts as $name => $val) {
             if (! in_array($name, $allowed, true)) {

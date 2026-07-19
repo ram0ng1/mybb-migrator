@@ -46,7 +46,8 @@ class MigrateUsersCommand extends AbstractCommand
             ->setDescription('Migrate MyBB users to Flarum, preserving IDs and capturing hashes in mybb_legacy_passwords.')
             ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm execution.')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Count and report without writing to Flarum.')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Migrate at most N users (useful for testing).', null);
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Migrate at most N users (useful for testing).', null)
+            ->addOption('passwords-only', null, InputOption::VALUE_NONE, 'Somente (re)popular mybb_legacy_passwords para usuários que já existem no Flarum; não insere users nem grupos.');
         $this->addMybbConnectionOptions();
     }
 
@@ -55,6 +56,10 @@ class MigrateUsersCommand extends AbstractCommand
         if (! $this->input->getOption('force')) {
             $this->error('Run with --force.');
             return 1;
+        }
+
+        if ($this->input->getOption('passwords-only')) {
+            return $this->firePasswordsOnly();
         }
 
         $dryRun = (bool) $this->input->getOption('dry-run');
@@ -215,6 +220,89 @@ class MigrateUsersCommand extends AbstractCommand
         $this->info("  awaiting activation : {$awaiting}");
         $this->info("  assigned to Admin   : {$adminCount}");
         $this->info("  assigned to Mod     : {$modCount}");
+
+        $this->reportWarnings($warnings);
+
+        return 0;
+    }
+
+    /**
+     * Modo --passwords-only: preenche mybb_legacy_passwords para usuários que JÁ
+     * existem no Flarum mas ainda não têm linha legada. Cenário típico: produção
+     * populada por dump do banco Flarum (users/posts vieram) sem a tabela
+     * companheira, deixando todo mundo sem poder logar com a senha do MyBB.
+     *
+     * Não toca em users nem em grupos. Idempotente: pula quem já tem linha (para
+     * refazer do zero, TRUNCATE a tabela antes). Os hashes vêm da origem MyBB,
+     * que é a fonte completa e nunca é consumida pelo verificador de login.
+     */
+    private function firePasswordsOnly(): int
+    {
+        $dryRun = (bool) $this->input->getOption('dry-run');
+        $limit  = $this->input->getOption('limit') ? (int) $this->input->getOption('limit') : null;
+
+        $mybb = $this->buildMybbDatabase($this->settings);
+        $prefix = $mybb->prefix();
+
+        // Ids que existem no Flarum (a FK exige o usuário presente) e os que já
+        // têm linha legada (para não sobrescrever nem duplicar).
+        $flarumUserIds = [];
+        foreach ($this->db->table('users')->select('id')->cursor() as $u) {
+            $flarumUserIds[(int) $u->id] = true;
+        }
+        $existingLegacy = [];
+        foreach ($this->db->table('mybb_legacy_passwords')->select('user_id')->cursor() as $lp) {
+            $existingLegacy[(int) $lp->user_id] = true;
+        }
+
+        $this->info('Passwords-only mode' . ($dryRun ? ' (dry-run — nothing written)' : '') . '.');
+        $this->info('  Flarum users            : ' . count($flarumUserIds));
+        $this->info('  legacy rows already set : ' . count($existingLegacy));
+
+        $sql = "SELECT uid, password, salt, password_algorithm
+                FROM {$prefix}users
+                ORDER BY uid"
+                . ($limit ? " LIMIT {$limit}" : '');
+
+        $pwBatch = [];
+        $warnings = [];
+        $captured = 0; $noUser = 0; $already = 0; $noHash = 0;
+
+        foreach ($mybb->cursor($sql) as $row) {
+            $uid = (int) $row['uid'];
+
+            if (! isset($flarumUserIds[$uid])) { $noUser++; continue; }
+            if (isset($existingLegacy[$uid]))  { $already++; continue; }
+
+            $password = (string) ($row['password'] ?? '');
+            if ($password === '') { $noHash++; continue; }
+
+            $pwBatch[] = [
+                'user_id'   => $uid,
+                'algorithm' => (string) ($row['password_algorithm'] ?? ''),
+                'hash'      => mb_substr($password, 0, 255),
+                'salt'      => mb_substr((string) ($row['salt'] ?? ''), 0, 16),
+            ];
+            $existingLegacy[$uid] = true;
+            $captured++;
+
+            if (count($pwBatch) >= self::BATCH) {
+                if (! $dryRun) {
+                    $this->insertResilient('mybb_legacy_passwords', $pwBatch, $warnings);
+                }
+                $pwBatch = [];
+            }
+        }
+
+        if ($pwBatch !== [] && ! $dryRun) {
+            $this->insertResilient('mybb_legacy_passwords', $pwBatch, $warnings);
+        }
+
+        $this->info('Done.');
+        $this->info("  hashes captured                 : {$captured}");
+        $this->info("  skipped (no matching Flarum user): {$noUser}");
+        $this->info("  skipped (already had legacy row) : {$already}");
+        $this->info("  skipped (empty MyBB hash)        : {$noHash}");
 
         $this->reportWarnings($warnings);
 
