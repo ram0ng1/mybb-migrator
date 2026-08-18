@@ -85,6 +85,28 @@ class StepStore
     }
 
     /**
+     * Publica o progresso do passo em execução (e serve de heartbeat).
+     *
+     * Restrito a linhas `running` de propósito: rodando o comando direto pelo
+     * CLI a linha pode estar `done` de uma execução anterior, e sujá-la faria o
+     * painel mostrar uma barra viva para algo que já terminou.
+     *
+     * @param int|null $total null = total desconhecido (barra indeterminada)
+     */
+    public function progress(string $step, int $done, ?int $total = null, ?string $label = null): void
+    {
+        $this->db->table(self::TABLE)
+            ->where('step', $step)
+            ->where('status', 'running')
+            ->update([
+                'progress_done'  => max(0, $done),
+                'progress_total' => $total === null ? null : max(0, $total),
+                'progress_label' => $label,
+                'updated_at'     => $this->now(),
+            ]);
+    }
+
+    /**
      * @param array<string, mixed> $summary
      */
     public function markFinished(string $step, int $exitCode, array $summary): void

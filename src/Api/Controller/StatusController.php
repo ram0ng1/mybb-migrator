@@ -49,6 +49,15 @@ class StatusController implements RequestHandlerInterface
                 'started_at'  => $row['started_at'] ?? null,
                 'finished_at' => $row['finished_at'] ?? null,
                 'stale'       => $row ? $this->store->isStaleRow($row) : false,
+                // Progresso só faz sentido enquanto roda; depois de terminar a
+                // barra some e o resumo assume.
+                'progress'    => ($row['status'] ?? null) === 'running' && isset($row['progress_done'])
+                    ? [
+                        'done'  => (int) $row['progress_done'],
+                        'total' => isset($row['progress_total']) ? (int) $row['progress_total'] : null,
+                        'label' => $row['progress_label'] ?? null,
+                    ]
+                    : null,
             ];
         }
 
@@ -59,11 +68,22 @@ class StatusController implements RequestHandlerInterface
             'runningLog' => $running ? $this->store->tail($running, 200) : '',
             'steps'      => $steps,
             'catalog'    => StepCatalog::all(),
+            'media'      => $this->snapshot->media(),
         ];
 
-        if (! empty($request->getQueryParams()['counts'])) {
-            $data['source'] = $this->snapshot->source();
-            $data['target'] = $this->snapshot->target();
+        $query = $request->getQueryParams();
+
+        if (! empty($query['counts'])) {
+            // Servidas do cache por padrão (COUNT(*) nas tabelas do MyBB custa
+            // segundos); `refresh=1` força recalcular — é o que o painel manda
+            // depois que um passo termina.
+            $counts = $this->snapshot->counts(! empty($query['refresh']));
+
+            $data['source'] = $counts['source'];
+            $data['target'] = $counts['target'];
+            $data['mediaStats'] = $counts['mediaStats'];
+            $data['countsAt'] = $counts['computed_at'];
+            $data['countsCached'] = $counts['cached'];
         }
 
         return new JsonResponse($data);

@@ -260,6 +260,133 @@ php flarum mybb:reviews       --force   # Community Reviews -> traderfeedback
 php flarum mybb:make-admin --username ramon --force   # promote your own account to Admin
 ```
 
+### Media — remote images & attachments (opt-in, budgeted)
+
+Migrated posts still load their images from wherever they were hosted (imgur,
+the old domain, a dead image host). These two steps bring the files onto your
+own server — into `public/assets/files`, the folder fof/upload's local adapter
+uses — and repoint the posts at the local copies.
+
+They are **outside** every guided sequence (`Run everything` never triggers
+them): they hit the network and consume disk, so they are always an explicit
+decision, taken with a limit, after eyeballing a sample.
+
+**Nothing here has to be typed in by hand.** With the settings still empty, the
+panel auto-detects on first open (and the commands do the same when run from the
+CLI):
+
+- **which hosts to localize** — the posts already migrated are scanned and their
+  image hosts ranked by usage. The busy ones are applied; the long tail is listed
+  on screen marked as left out, never dropped silently.
+- **where MyBB's `uploads` folder is** — candidates near the Flarum install are
+  probed and each one is *proven* against real `attachname` rows before being
+  accepted. A guess that can't be proven is not used.
+
+```bash
+# Just one discussion — paste the URL straight from the browser
+php flarum mybb:images --force --discussion=https://example.com/d/1661-some-thread
+
+# See what would happen — no downloads, no writes
+php flarum mybb:images --force --dry-run --hosts=i.imgur.com --limit=20
+
+# Localize 20 images and stop, so you can look at the forum first
+php flarum mybb:images --force --hosts=i.imgur.com --limit=20
+
+# Happy with the result? Lift the budget
+php flarum mybb:images --force --hosts=i.imgur.com,damnfineshave.com --limit=0 --max-mb=0
+
+# Attachments: copy straight off the MyBB uploads folder (preferred)
+php flarum mybb:attachments --force --uploads-dir=/var/www/mybb/uploads --limit=10
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--hosts=a,b` | Hosts (or full URL prefixes) to localize. A bare host also matches its subdomains. Reads the panel setting when omitted. |
+| `--all-hosts` | Localize every external image, ignoring the filter. |
+| `--limit=N` | Max **new** URLs attempted this run — downloaded *or* failed. `0` = no cap. |
+| `--max-mb=N` | Total download budget for the run. `0` = no cap. |
+| `--max-file-mb=N` | Per-file cap; the download aborts mid-stream when exceeded. |
+| `--discussion=X` | Only this discussion — accepts an id, a slug or a full Flarum discussion URL. Implies no per-run cap (the discussion *is* the scope) and gives the panel an exact progress percentage. |
+| `--posts=N`, `--from-id=N` | Narrow the scan window. |
+| `--dry-run` | Report only. |
+| `--retry-failed` | Try URLs previously recorded as dead again. |
+| `--relink-only` | No network at all: only re-apply URLs already downloaded. |
+| `--uploads-dir=PATH` | *(attachments)* Copy from the MyBB `uploads` folder instead of downloading. |
+| `--include-hidden` | *(attachments)* Also take attachments still pending approval. |
+
+What makes re-running safe:
+
+- Every URL processed is recorded in **`mybb_migrated_images`**. Successful ones
+  are re-pointed without touching the network — that is the "skip images already
+  populated" behaviour. Dead ones are remembered as `failed` and are not retried
+  unless you ask.
+- Local filenames are a hash of the source URL, so the same remote image always
+  maps to the same local file; nothing is ever downloaded twice.
+- After `mybb:rebuild-formatting` (which re-derives posts from MyBB and brings
+  the remote URLs back), run `php flarum mybb:images --force --relink-only` to
+  re-apply the whole map in seconds.
+
+Dead-image handling worth knowing about:
+
+- Redirects are followed, but the **final response is validated**: if it is HTML,
+  the file is gone. `i.imgur.com/<id>.jpg` redirects to the `imgur.com/<id>` page
+  when the stored object is actually a PNG, so the fetcher retries the other
+  extensions of the same id before giving up.
+- imgur's `removed.png` placeholder is treated as a failure rather than saved as
+  a grey "image removed" tile.
+- The MIME type comes from the **bytes** (finfo / magic numbers), never from the
+  URL extension or the declared `Content-Type`.
+
+#### Restricted tags: files are written outside the document root, not moved later
+
+`public/assets/files` is served by the web server without PHP ever running, so
+while a file sits there **no permission of any kind applies to it**. For a forum
+imported with restricted tags that matters: the images of a private area would be
+readable by anyone holding the URL.
+
+`ramon/dfs` solves this by keeping tag-scoped uploads in `storage/dfs-private-uploads`
+and serving them through a permission-checked route. This extension does **not**
+reimplement any of that — it just makes sure the bytes never land on the wrong
+side to begin with:
+
+- before writing, the discussion is checked with Flarum's own
+  `Discussion::whereVisibleTo(new Guest())` — the same call `ramon/dfs` makes, not
+  a second reading of the tag rows;
+- if a guest cannot see it, the file is written straight into the private store and
+  registered in `dfs_private_uploads`;
+- at the end of the step, every touched file is handed to `ramon/dfs` for
+  reclassification, which is what settles the case of one image appearing in both
+  an open and a restricted discussion (its rule is the least restrictive one).
+
+Without `ramon/dfs` installed all of this switches off and files are written
+publicly, which is the only possible destination in that case.
+
+The URL frozen into the post is `/assets/files/…` either way — that is precisely
+what `GatePrivateUploads` looks for when it rewrites a render to the gated route.
+Only the location of the bytes differs.
+
+`fof/upload` is optional: without it the files are still downloaded and the posts
+do point at the local copies — they just won't appear in the media manager. With
+it installed, each file is also registered in `fof_upload_files` and linked to
+its post. The insert is schema-introspective, so it works across fof/upload
+versions (which have moved columns around several times).
+
+Attachments are **appended to the end of the post** — the `[attachment=N]` tokens
+were dropped during content migration, and MyBB itself renders non-inlined
+attachments at the bottom. The post is rewritten through unparse → text → parse,
+the same path Flarum uses when a post is edited, so the resulting XML is always
+valid.
+
+All of this is also driven from the **Images & attachments** tab of the
+extension's admin page. The tab opens with the URLs to localize and the uploads
+folder already filled in by auto-detection, and adds a **"Localize this
+discussion"** box: paste a discussion URL and only its images are fetched. Both
+steps run detached in the background, reporting a **live progress bar** —
+a real percentage when the total is cheap to know (a single discussion, the
+attachment table), and an indeterminate bar with the running count otherwise.
+Counting 273k posts up front just to draw a percentage would cost more than the
+work itself, so the bar says "unknown" instead of inventing one.
+
 ### Phase 3 — Content clean-up / fidelity passes (run as needed)
 
 These are **idempotent fix-up passes** over already-migrated content. They were
@@ -368,12 +495,19 @@ src/
   Support/MybbPassword.php         # MyBB classic + DVZ Hash verification
   Support/Charset.php              # mojibake / charset repair
   Support/TapatalkEmoji.php        # Tapatalk emoji -> Unicode map
+  Support/ImageFetcher.php         # remote download: redirects, imgur fallbacks, size caps
+  Support/ImageStore.php           # writes to the right side + registers in fof_upload_files
+  Support/PrivateUploadBridge.php  # guest-visibility check before writing (ramon/dfs, optional)
+  Support/UploadVisibilityBridge.php # end-of-step reclassification handoff to ramon/dfs
+  Gui/MediaDetector.php            # ranks image hosts from the posts; finds & proves MyBB's uploads dir
   BBCode/Converter.php             # MyBB BBCode -> Flarum (s9e) conversion
   MybbDatabase.php                 # buffered/unbuffered PDO reader for the MyBB DB
   LegacyPassword.php               # Eloquent model for mybb_legacy_passwords
   Console/                         # all mybb:* commands (see migration order)
 migrations/
   2026_05_29_100001_create_mybb_legacy_passwords_table.php
+  2026_08_17_100001_create_mybb_migrated_images_table.php   # remote URL -> local file map
+  2026_08_17_100002_add_progress_to_mybb_migration_steps.php # live progress for the panel's bar
 extend.php                         # registers the password checker + all commands
 ```
 
@@ -385,6 +519,11 @@ Design notes:
   inserts.
 - `mybb:content` self-cleans the Flarum content tables before re-importing, so it
   can be re-run safely.
+- The admin panel paints from a **cheap status call** (~10 ms) and loads the
+  source/target counts afterwards: those are `COUNT(*)` over large InnoDB tables
+  (~13 s on the reference forum) and used to hold the whole page hostage. They
+  are cached for `mybb-migrator.counts_ttl` seconds (default 300) and recomputed
+  on demand — automatically once a step finishes, or via the **Recount** button.
 
 ---
 
@@ -394,8 +533,10 @@ Design notes:
   in this particular forum (Tapatalk, DVZ Hash, double-UTF-8 mojibake). Review
   each before running on a different dataset; always try `--dry-run` first where
   available, and back up the Flarum DB.
-- Avatar/attachment **files** are not copied by this extension — use
-  `michaelbelgium/mybb-to-flarum` or copy them manually into `public/assets/`.
+- **Avatar** files are not copied by this extension (`mybb:avatars` only points
+  `users.avatar_url` at files you already placed in `public/assets/avatars`).
+  Post **images and attachments** *are* handled — see the media section above —
+  but only when you run those steps explicitly, with a budget.
 - `mybb:wipe` is destructive (clears Flarum content). It keeps schema, core
   groups and settings, but use it only on a throw-away/staging install.
 

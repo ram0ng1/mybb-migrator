@@ -9,15 +9,18 @@ import MigratorState from "../states/MigratorState";
 import type { Phase } from "../types";
 import ComparePanel from "./ComparePanel";
 import ConnectionCard from "./ConnectionCard";
+import ImagesCard from "./ImagesCard";
 import LiveConsole from "./LiveConsole";
+import ProgressBar from "./ProgressBar";
 import ProgressOverview from "./ProgressOverview";
 import StepList from "./StepList";
 
-type Tab = "connection" | "migrate" | "compare" | "cleanup" | "diag";
+type Tab = "connection" | "migrate" | "images" | "compare" | "cleanup" | "diag";
 
 const TABS: Array<{ id: Tab; icon: string }> = [
   { id: "connection", icon: "fas fa-plug" },
   { id: "migrate", icon: "fas fa-play" },
+  { id: "images", icon: "fas fa-image" },
   { id: "compare", icon: "fas fa-columns" },
   { id: "cleanup", icon: "fas fa-broom" },
   { id: "diag", icon: "fas fa-stethoscope" },
@@ -38,23 +41,34 @@ export default class MigratorDashboard extends Component<ComponentAttrs> {
   }
 
   onremove(): void {
+    // Encerra o polling: um timer sobrevivente redesenharia sobre uma árvore que
+    // o Mithril já não controla.
     this.migrator.dispose();
   }
 
+  /**
+   * A árvore tem SEMPRE a mesma forma: um container de banner (vazio quando nada
+   * roda), a barra de abas e o corpo.
+   *
+   * Isso não é estilo — é correção. Antes o banner era o primeiro de três irmãos
+   * sem `key`, alternando entre `null` e elemento a cada polling; nessa troca o
+   * Mithril inseria um nó novo em vez de atualizar o existente, e o antigo ficava
+   * órfão no DOM, congelado no último progresso que tinha (era a "duplicação":
+   * um card a cada ciclo, parados em 8, 9, 10...). Com um container fixo, o que
+   * muda é só o filho DELE, que o Mithril substitui no lugar. Pelo mesmo motivo o
+   * estado de carregamento agora vive DENTRO do corpo, em vez de trocar a árvore
+   * inteira por um spinner.
+   */
   view(): Mithril.Children {
-    if (this.migrator.loading && !this.migrator.status) {
-      return (
-        <div className="MmDashboard">
-          <LoadingIndicator />
-        </div>
-      );
-    }
+    const booting = this.migrator.loading && !this.migrator.status;
 
     return (
       <div className="MmDashboard">
-        {this.runningBanner()}
+        <div className="MmDashboard-banner">{this.runningBanner()}</div>
         {this.tabBar()}
-        <div className="MmDashboard-body">{this.tabContent()}</div>
+        <div className="MmDashboard-body">
+          {booting ? <LoadingIndicator /> : this.tabContent()}
+        </div>
       </div>
     );
   }
@@ -81,6 +95,8 @@ export default class MigratorDashboard extends Component<ComponentAttrs> {
         return <ConnectionCard state={this.migrator} />;
       case "migrate":
         return this.migrateTab();
+      case "images":
+        return this.imagesTab();
       case "compare":
         return <ComparePanel state={this.migrator} />;
       case "cleanup":
@@ -94,7 +110,7 @@ export default class MigratorDashboard extends Component<ComponentAttrs> {
     const running = this.migrator.isRunning();
     return (
       <div>
-        {this.migrator.status && <ProgressOverview status={this.migrator.status} />}
+        {this.migrator.status && <ProgressOverview state={this.migrator} />}
 
         <div className="MmCard MmGuide">
           <h4>{trans("run.title")}</h4>
@@ -150,6 +166,21 @@ export default class MigratorDashboard extends Component<ComponentAttrs> {
     );
   }
 
+  /**
+   * Mídia: configuração (quais URLs internalizar, orçamento) + os dois passos.
+   * Fora das sequências guiadas de propósito — baixar arquivos consome banda e
+   * disco, então é sempre uma decisão explícita.
+   */
+  private imagesTab(): Mithril.Children {
+    return (
+      <div>
+        <ImagesCard state={this.migrator} />
+        <div className="MmAlert MmAlert--warn">{trans("images.warning")}</div>
+        <StepList state={this.migrator} phases={["media"] as Phase[]} />
+      </div>
+    );
+  }
+
   private cleanupTab(): Mithril.Children {
     return (
       <div>
@@ -176,6 +207,7 @@ export default class MigratorDashboard extends Component<ComponentAttrs> {
             {trans("run.cancel")}
           </Button>
         </div>
+        <ProgressBar progress={this.migrator.stepStatus(running)?.progress ?? null} />
         <LiveConsole text={this.migrator.status?.runningLog ?? ""} follow={true} />
       </div>
     );

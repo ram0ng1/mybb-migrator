@@ -11,6 +11,7 @@ ramon-mybb-migrator:
     tabs:
       connection: Connection
       migrate: Migration
+      images: Images & attachments
       compare: Compare
       cleanup: Advanced / cleanup
       diag: Diagnostics
@@ -54,6 +55,11 @@ ramon-mybb-migrator:
     progress:
       title: Progress (MyBB → Flarum)
       no_source: Source counts unavailable — test the connection first.
+      loading: Counting rows on both sides…
+      recount: Recount
+      measured_at: "measured at {time}"
+      of_total: "{done} of {total} ({pct}%)"
+      scanned: "{done} processed"
       entity:
         users: Users
         discussions: Discussions
@@ -83,6 +89,68 @@ ramon-mybb-migrator:
       "2":
         title: "Phase 2 — Secondary content"
         desc: "Runs after users and content exist: subscriptions, private messages, polls, trader feedback, reviews, and promoting your admin."
+
+    images:
+      title: Media localization
+      intro: >-
+        Migrated posts still load their images from wherever they were hosted
+        (imgur, the old domain, a dead image host…). This brings those files
+        into your own server — same folder fof/upload uses — and rewrites the
+        posts to point at the local copies.
+      warning: >-
+        These two steps hit the network and use disk, so they are never part of
+        “Run everything”. Start with a small limit and a dry-run, look at the
+        forum, then raise the budget. Files already downloaded are never
+        downloaded again, and dead URLs are remembered so they are not retried.
+      hosts: URLs to localize
+      hosts_count: "{count} host(s)"
+      hosts_hint: >-
+        Comma-separated hosts or URL prefixes, e.g. “i.imgur.com,
+        damnfineshave.com”. A bare host also matches its subdomains.
+        Auto-detection fills this with every host found in your posts — prune it
+        if you want to leave some out. Leaving it empty and ticking all-hosts on
+        the step takes everything external, including hosts not in any post yet.
+      limit: Images per run
+      max_mb: Total MB per run
+      max_file_mb: Max MB per file
+      attachments_dir: MyBB uploads folder (optional)
+      attachments_dir_hint: >-
+        Path to the MyBB “uploads” folder. When set, attachments are copied
+        straight from disk; otherwise they are downloaded from the old site URL,
+        which only works while attachments are publicly readable there.
+      directory: Files are written to
+      detect: Auto-detect
+      detect_failed: Auto-detection failed.
+      detect_result: "{hosts} host(s) applied — {images} images across {scanned} posts scanned"
+      detect_show_all: "Show the other {count} host(s)"
+      detect_sample: (sample)
+      detect_uploads_ok: MyBB uploads folder found
+      detect_uploads_none: >-
+        MyBB uploads folder not found near this install — set it by hand if you
+        have it, otherwise attachments fall back to downloading from the old site.
+      discussion: Localize one discussion
+      discussion_run: Localize this discussion
+      discussion_hint: >-
+        Paste the discussion URL (or just its id). Only that discussion's images
+        are downloaded, with no per-run cap — the cheapest way to see the result
+        before running the full sweep. It runs in the background with a progress
+        bar.
+      save: Save media settings
+      saved: Media settings saved.
+      no_fof_upload: >-
+        fof/upload is not installed. Files are still downloaded and the posts do
+        point at the local copies — they just won’t show up in the media
+        manager. Install and enable fof/upload, then run the step again to
+        register them.
+      no_map_table: >-
+        Table mybb_migrated_images is missing — run “php flarum migrate” before
+        using these steps.
+      stats:
+        images_ok: Images localized
+        images_failed: Images failed
+        attachments_ok: Attachments migrated
+        attachments_failed: Attachments failed
+        disk: Disk used
 
     compare:
       title: Compare formatting (old × Flarum)
@@ -146,4 +214,6 @@ ramon-mybb-migrator:
         trade-feedback: iTrader feedback → traderfeedback.
         reviews: Community Reviews → traderfeedback.
         make-admin: Promote your account to Admin (set the username).
+        images: Downloads the remote images used by migrated posts and repoints the posts at the local copies. Skips URLs already localized; remembers dead ones.
+        attachments: Migrates MyBB post attachments into local storage and appends them to the migrated posts.
         legacy-passwords: Backfill mybb_legacy_passwords for existing users (carry MyBB passwords to an already-migrated Flarum). Skips users that already have a row.

@@ -5,6 +5,7 @@ namespace Ramon\MybbMigrator;
 use Flarum\Extend;
 use Ramon\MybbMigrator\Api\Controller\CancelController;
 use Ramon\MybbMigrator\Api\Controller\ComparePostController;
+use Ramon\MybbMigrator\Api\Controller\DetectMediaController;
 use Ramon\MybbMigrator\Api\Controller\LogController;
 use Ramon\MybbMigrator\Api\Controller\RunStepController;
 use Ramon\MybbMigrator\Api\Controller\SaveConnectionController;
@@ -34,10 +35,12 @@ use Ramon\MybbMigrator\Console\RevertMdStrikeSubCommand;
 use Ramon\MybbMigrator\Console\RevertQuoteMentionsCommand;
 use Ramon\MybbMigrator\Console\StripOrphanBbcodeCommand;
 use Ramon\MybbMigrator\Console\MakeAdminCommand;
+use Ramon\MybbMigrator\Console\MigrateAttachmentsCommand;
 use Ramon\MybbMigrator\Console\MigrateAvatarsCommand;
 use Ramon\MybbMigrator\Console\MigrateContentCommand;
 use Ramon\MybbMigrator\Console\MigrateForumPermsCommand;
 use Ramon\MybbMigrator\Console\MigrateGroupsCommand;
+use Ramon\MybbMigrator\Console\MigrateImagesCommand;
 use Ramon\MybbMigrator\Console\MigratePermissionsCommand;
 use Ramon\MybbMigrator\Console\MigrateLikesCommand;
 use Ramon\MybbMigrator\Console\MigrateMessagesCommand;
@@ -73,7 +76,22 @@ return [
         // Segundos sem heartbeat (mtime do log) até o painel considerar um passo
         // travado. Alto de propósito: operações silenciosas longas (COUNT/DELETE
         // em massa) não devem ser marcadas como falha nem reabrir o guard.
-        ->default('mybb-migrator.stale_seconds', 600),
+        ->default('mybb-migrator.stale_seconds', 600)
+        // --- Migração de imagens/anexos (aba "Imagens" do painel) ---
+        // Hosts (ou prefixos de URL) cujas imagens viram arquivos locais. Vazio
+        // = nada é internalizado sem --all-hosts, de propósito: um fórum antigo
+        // referencia meio mundo, e baixar tudo às cegas é caro.
+        ->default('mybb-migrator.image_hosts', '')
+        // Orçamento padrão de um run — existe para poder testar com pouco antes
+        // de soltar a migração inteira.
+        ->default('mybb-migrator.image_limit', 50)
+        ->default('mybb-migrator.image_max_mb', 200)
+        ->default('mybb-migrator.image_max_file_mb', 10)
+        // Pasta `uploads` do MyBB, se acessível: evita depender do site antigo.
+        ->default('mybb-migrator.attachments_dir', '')
+        // Segundos de validade do cache de contagens (COUNT(*) no MyBB custa
+        // segundos; sem cache a página do painel ficava presa esperando).
+        ->default('mybb-migrator.counts_ttl', 300),
 
     (new Extend\Auth())
         ->addPasswordChecker('mybb-legacy', MybbPasswordChecker::class),
@@ -82,6 +100,7 @@ return [
         ->get('/mybb-migrator/status', 'mybb-migrator.status', StatusController::class)
         ->post('/mybb-migrator/connection', 'mybb-migrator.connection.save', SaveConnectionController::class)
         ->post('/mybb-migrator/test', 'mybb-migrator.connection.test', TestConnectionController::class)
+        ->post('/mybb-migrator/detect-media', 'mybb-migrator.media.detect', DetectMediaController::class)
         ->post('/mybb-migrator/run', 'mybb-migrator.run', RunStepController::class)
         ->post('/mybb-migrator/cancel', 'mybb-migrator.cancel', CancelController::class)
         ->get('/mybb-migrator/log', 'mybb-migrator.log', LogController::class)
@@ -93,6 +112,8 @@ return [
         ->command(MigrateGroupsCommand::class)
         ->command(MigrateUsersCommand::class)
         ->command(MigrateAvatarsCommand::class)
+        ->command(MigrateImagesCommand::class)
+        ->command(MigrateAttachmentsCommand::class)
         ->command(MigrateTagsCommand::class)
         ->command(MigrateContentCommand::class)
         ->command(MigrateLikesCommand::class)

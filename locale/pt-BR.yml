@@ -11,6 +11,7 @@ ramon-mybb-migrator:
     tabs:
       connection: Conexão
       migrate: Migração
+      images: Imagens e anexos
       compare: Comparar
       cleanup: Avançado / limpeza
       diag: Diagnóstico
@@ -53,6 +54,11 @@ ramon-mybb-migrator:
 
     progress:
       title: Progresso (MyBB → Flarum)
+      loading: Contando as linhas dos dois lados…
+      recount: Recontar
+      measured_at: "medido às {time}"
+      of_total: "{done} de {total} ({pct}%)"
+      scanned: "{done} processados"
       no_source: Contagens de origem indisponíveis — teste a conexão primeiro.
       entity:
         users: Usuários
@@ -84,6 +90,68 @@ ramon-mybb-migrator:
       "2":
         title: "Fase 2 — Conteúdo secundário"
         desc: "Roda depois que usuários e conteúdo existem: inscrições, mensagens privadas, enquetes, feedback de trade, avaliações e promover seu admin."
+
+    images:
+      title: Internalização de mídia
+      intro: >-
+        Os posts migrados ainda carregam as imagens de onde elas estavam
+        hospedadas (imgur, o domínio antigo, um host de imagem morto…). Este
+        passo traz esses arquivos para o seu servidor — na mesma pasta que o
+        fof/upload usa — e reescreve os posts para apontarem para a cópia local.
+      warning: >-
+        Estes dois passos acessam a rede e consomem disco, então ficam fora do
+        “Rodar tudo”. Comece com um limite pequeno e um dry-run, olhe o fórum e
+        só então aumente o orçamento. Nada já baixado é rebaixado, e URLs mortas
+        ficam registradas para não serem retentadas.
+      hosts: URLs a internalizar
+      hosts_count: "{count} host(s)"
+      hosts_hint: >-
+        Hosts ou prefixos de URL separados por vírgula, ex.: “i.imgur.com,
+        damnfineshave.com”. Um host solto também casa com os subdomínios. A
+        detecção preenche isto com TODOS os hosts achados nos seus posts — pode
+        podar o que não quiser. Deixar vazio e marcar all-hosts no passo pega
+        tudo que é externo, inclusive hosts que ainda não aparecem em post algum.
+      limit: Imagens por execução
+      max_mb: MB totais por execução
+      max_file_mb: MB máx. por arquivo
+      attachments_dir: Pasta uploads do MyBB (opcional)
+      attachments_dir_hint: >-
+        Caminho da pasta “uploads” do MyBB. Preenchida, os anexos são copiados
+        direto do disco; vazia, são baixados pela URL do site antigo — o que só
+        funciona enquanto os anexos forem públicos lá.
+      directory: Os arquivos são gravados em
+      detect: Detectar automaticamente
+      detect_failed: A detecção automática falhou.
+      detect_result: "{hosts} host(s) aplicados — {images} imagens em {scanned} posts varridos"
+      detect_show_all: "Mostrar os outros {count} host(s)"
+      detect_sample: (amostra)
+      detect_uploads_ok: Pasta uploads do MyBB encontrada
+      detect_uploads_none: >-
+        Não achei a pasta uploads do MyBB perto desta instalação — informe o
+        caminho à mão se você a tiver; sem ela os anexos caem no download pelo
+        site antigo.
+      discussion: Internalizar uma discussão
+      discussion_run: Internalizar esta discussão
+      discussion_hint: >-
+        Cole a URL da discussão (ou só o id). Só as imagens dela são baixadas, sem
+        teto por execução — é o jeito mais barato de ver o resultado antes de
+        soltar a varredura completa. Roda em segundo plano, com barra de progresso.
+      save: Salvar configurações de mídia
+      saved: Configurações de mídia salvas.
+      no_fof_upload: >-
+        A extensão fof/upload não está instalada. Os arquivos são baixados e os
+        posts passam a apontar para a cópia local do mesmo jeito — eles só não
+        aparecem no gerenciador de mídia. Instale e habilite o fof/upload e rode
+        o passo de novo para registrá-los.
+      no_map_table: >-
+        A tabela mybb_migrated_images não existe — rode “php flarum migrate”
+        antes de usar estes passos.
+      stats:
+        images_ok: Imagens internalizadas
+        images_failed: Imagens com falha
+        attachments_ok: Anexos migrados
+        attachments_failed: Anexos com falha
+        disk: Disco usado
 
     compare:
       title: Comparar formatação (antigo × Flarum)
@@ -147,4 +215,6 @@ ramon-mybb-migrator:
         trade-feedback: Feedback do iTrader → traderfeedback.
         reviews: Avaliações da comunidade → traderfeedback.
         make-admin: Promove sua conta a Admin (informe o usuário).
+        images: Baixa as imagens remotas usadas pelos posts migrados e reaponta os posts para a cópia local. Pula URLs já internalizadas; lembra as mortas.
+        attachments: Migra os anexos dos posts do MyBB para o armazenamento local e os acrescenta aos posts migrados.
         legacy-passwords: Preenche mybb_legacy_passwords para usuários já existentes (leva as senhas do MyBB a um Flarum já migrado). Pula quem já tem linha.

@@ -13,7 +13,7 @@ namespace Ramon\MybbMigrator\Gui;
  * Estrutura de cada item:
  *  - key:        nome curto (sem "mybb:"), usado como chave de status e na URL
  *  - command:    nome completo do comando Symfony
- *  - phase:      '0' | '1' | '2' | '3' | 'diag'
+ *  - phase:      '0' | '1' | '2' | '3' | 'media' | 'diag'
  *  - force:      passa --force ao executar (todos menos test-bio-render)
  *  - dangerous:  pede confirmação no painel (wipe / revert-* destrutivos)
  *  - options:    opções extras suportadas pelo comando, expostas na UI
@@ -49,6 +49,13 @@ class StepCatalog
             self::s('trade-feedback', 'mybb:trade-feedback', '2'),
             self::s('reviews',        'mybb:reviews',        '2'),
             self::s('make-admin',     'mybb:make-admin',     '2', options: ['username', 'like'], requiresUsername: true, manual: true),
+
+            // ---- Mídia: imagens remotas e anexos (fora das sequências) ----
+            // Ficam de fora de "Rodar tudo" DE PROPÓSITO: baixam arquivos da
+            // internet e consomem disco, então são sempre uma decisão explícita,
+            // com limite, depois de conferir o resultado numa amostra.
+            self::s('images',      'mybb:images',      'media', options: ['dry-run', 'discussion', 'limit', 'max-mb', 'max-file-mb', 'hosts', 'all-hosts', 'posts', 'retry-failed', 'relink-only'], manual: true),
+            self::s('attachments', 'mybb:attachments', 'media', options: ['dry-run', 'limit', 'max-mb', 'max-file-mb', 'uploads-dir', 'include-hidden', 'retry-failed'], manual: true),
 
             // ---- Fase 3: limpeza / fidelidade (rodar só o que precisar) ----
             self::s('fix-charset',          'mybb:fix-charset',          '3'),

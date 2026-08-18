@@ -1,16 +1,18 @@
 import app from "flarum/admin/app";
 import Component, { ComponentAttrs } from "flarum/common/Component";
+import Button from "flarum/common/components/Button";
+import LoadingIndicator from "flarum/common/components/LoadingIndicator";
 import extractText from "flarum/common/utils/extractText";
 import type Mithril from "mithril";
 
-import type { MigratorStatus } from "../types";
+import type MigratorState from "../states/MigratorState";
 
 interface Attrs extends ComponentAttrs {
-  status: MigratorStatus;
+  state: MigratorState;
 }
 
-const trans = (key: string): string =>
-  extractText(app.translator.trans(`ramon-mybb-migrator.admin.${key}`));
+const trans = (key: string, args: Record<string, unknown> = {}): string =>
+  extractText(app.translator.trans(`ramon-mybb-migrator.admin.${key}`, args));
 
 /** Mapeia entidade -> (contagem origem MyBB, contagem destino Flarum). */
 const ROWS: Array<{ key: string; source: string; target: string }> = [
@@ -20,20 +22,54 @@ const ROWS: Array<{ key: string; source: string; target: string }> = [
   { key: "tags", source: "forums", target: "tags" },
 ];
 
-/** Barras comparando origem (MyBB) x destino (Flarum) por entidade. */
+/**
+ * Barras comparando origem (MyBB) x destino (Flarum) por entidade.
+ *
+ * As contagens chegam DEPOIS do primeiro render — são COUNT(*) caros no MyBB e
+ * o painel não espera por elas. Enquanto não chegam, o card mostra o estado de
+ * carregamento em vez de zeros, que pareceriam "nada migrado".
+ */
 export default class ProgressOverview extends Component<Attrs> {
   view(): Mithril.Children {
-    const { status } = this.attrs;
+    const { state } = this.attrs;
+    const status = state.status;
+    if (!status) return null;
+
     const source = status.source?.counts ?? {};
     const target = status.target ?? {};
     const hasSource = !!status.source?.ok;
+    const loaded = !!status.countsAt;
 
     return (
       <div className="MmCard MmProgress">
-        <h4>{trans("progress.title")}</h4>
-        {!hasSource && (
-          <p className="MmMuted">{trans("progress.no_source")}</p>
+        <div className="MmProgress-head">
+          <h4>{trans("progress.title")}</h4>
+          <div className="MmProgress-meta">
+            {loaded && (
+              <span className="MmMuted">
+                {trans("progress.measured_at", {
+                  time: new Date((status.countsAt as number) * 1000).toLocaleTimeString(),
+                })}
+              </span>
+            )}
+            <Button
+              className="Button Button--text Button--sm"
+              loading={state.countsLoading}
+              onclick={() => state.loadCounts(true)}
+            >
+              {trans("progress.recount")}
+            </Button>
+          </div>
+        </div>
+
+        {!loaded && state.countsLoading && (
+          <p className="MmMuted">
+            <LoadingIndicator display="inline" size="small" /> {trans("progress.loading")}
+          </p>
         )}
+
+        {loaded && !hasSource && <p className="MmMuted">{trans("progress.no_source")}</p>}
+
         <div className="MmProgress-rows">
           {ROWS.map((row) => this.row(row, source, target, hasSource))}
         </div>

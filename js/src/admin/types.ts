@@ -1,4 +1,4 @@
-export type Phase = "0" | "1" | "2" | "3" | "diag";
+export type Phase = "0" | "1" | "2" | "3" | "media" | "diag";
 export type StepStatusName =
   | "pending"
   | "running"
@@ -27,6 +27,14 @@ export interface StepSummary {
   error?: string;
 }
 
+/** Progresso ao vivo de um passo em execução (null quando não está rodando). */
+export interface StepProgress {
+  done: number;
+  /** null = total desconhecido de propósito → barra indeterminada. */
+  total: number | null;
+  label: string | null;
+}
+
 export interface StepStatus {
   status: StepStatusName;
   exit_code: number | null;
@@ -34,6 +42,7 @@ export interface StepStatus {
   started_at: string | null;
   finished_at: string | null;
   stale: boolean;
+  progress: StepProgress | null;
 }
 
 export interface ConnectionMeta {
@@ -69,6 +78,32 @@ export interface SourceCounts {
   counts: Record<string, number>;
 }
 
+/** Configuração da aba Imagens (migração de mídia). */
+export interface MediaConfig {
+  image_hosts: string;
+  image_limit: number;
+  image_max_mb: number;
+  image_max_file_mb: number;
+  attachments_dir: string;
+  /** fof/upload habilitado — necessário para o gerenciador de mídia. */
+  fof_upload: boolean;
+  /** Tabela fof_upload_files presente (extensão já migrou o schema). */
+  upload_table: boolean;
+  /** Tabela de mapa mybb_migrated_images presente. */
+  map_table: boolean;
+  /** Pasta absoluta onde os arquivos são gravados. */
+  directory: string;
+}
+
+/** Agregados do mapa de mídia (só vêm com ?counts=1). */
+export interface MediaStats {
+  images_ok: number;
+  images_failed: number;
+  attachments_ok: number;
+  attachments_failed: number;
+  bytes: number;
+}
+
 export interface MigratorStatus {
   connection: ConnectionMeta;
   preflight: Preflight;
@@ -78,6 +113,30 @@ export interface MigratorStatus {
   catalog: StepDef[];
   source?: SourceCounts;
   target?: Record<string, number>;
+  media: MediaConfig;
+  mediaStats?: MediaStats;
+  /** Unix timestamp de quando as contagens foram calculadas. */
+  countsAt?: number;
+  countsCached?: boolean;
+}
+
+/** Resultado da autodetecção de hosts de imagem + pasta de uploads. */
+export interface DetectResult {
+  hosts: {
+    ranking: Array<{ host: string; count: number }>;
+    applied: string[];
+    scanned: number;
+    truncated: boolean;
+    total_hosts: number;
+    total_images: number;
+  };
+  uploads: {
+    path: string | null;
+    checked: string[];
+    samples: string[];
+    reason: string | null;
+  };
+  applied: boolean;
 }
 
 export interface TestResult {
@@ -102,6 +161,11 @@ export interface ConnectionPayload {
   prefix?: string;
   php_binary?: string;
   old_site_url?: string;
+  image_hosts?: string;
+  image_limit?: string | number;
+  image_max_mb?: string | number;
+  image_max_file_mb?: string | number;
+  attachments_dir?: string;
 }
 
 export interface CompareResult {

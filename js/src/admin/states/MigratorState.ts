@@ -5,6 +5,7 @@ import apiCall, { apiUrl } from "../utils/apiCall";
 import type {
   CompareResult,
   ConnectionPayload,
+  DetectResult,
   MigratorStatus,
   RunPayload,
   StepStatus,
@@ -21,16 +22,36 @@ export default class MigratorState {
   loading = true;
   /** Ação (run/cancel/save/test) em andamento — desabilita botões. */
   busy = false;
+  /** As contagens origem/destino estão sendo buscadas em segundo plano. */
+  countsLoading = false;
 
   private timer: number | null = null;
   private inFlight = false;
+  private disposed = false;
+  /** Resolve na primeira carga de status — quem depende dela espera, não sonda. */
+  private ready!: Promise<void>;
+  private markReady!: () => void;
 
-  /** Carga inicial (com contagens). */
+  /**
+   * Carga inicial em DUAS etapas, de propósito.
+   *
+   * As contagens de origem são COUNT(*) em tabelas grandes do MyBB — no fórum de
+   * referência, ~12 s. Esperar por elas deixava a página da extensão em branco
+   * todo esse tempo. Agora o painel pinta com o status (rápido) e as contagens
+   * chegam depois, preenchendo as barras quando ficarem prontas.
+   */
   start(): void {
-    void this.refresh(true);
+    this.ready = new Promise<void>((resolve) => (this.markReady = resolve));
+    void this.refresh(false).then(() => this.loadCounts());
+  }
+
+  /** Promessa cumprida quando o primeiro status chega. */
+  whenReady(): Promise<void> {
+    return this.ready ?? Promise.resolve();
   }
 
   dispose(): void {
+    this.disposed = true;
     if (this.timer !== null) {
       window.clearInterval(this.timer);
       this.timer = null;
@@ -47,27 +68,82 @@ export default class MigratorState {
 
   async refresh(withCounts = false): Promise<void> {
     const res = await apiCall<MigratorStatus>(
+      { method: "GET", url: `${apiUrl()}/mybb-migrator/status` },
+      { silent: true },
+    );
+    if (res) this.status = this.merge(res);
+    this.loading = false;
+    this.markReady?.();
+    m.redraw();
+    this.managePolling();
+
+    if (withCounts) await this.loadCounts();
+  }
+
+  /**
+   * Busca as contagens sem travar a tela. `force` recalcula em vez de aceitar o
+   * cache do servidor — é o que se quer depois que um passo terminou e os
+   * números realmente mudaram.
+   */
+  async loadCounts(force = false): Promise<void> {
+    this.countsLoading = true;
+    m.redraw();
+
+    const res = await apiCall<MigratorStatus>(
       {
         method: "GET",
-        url: `${apiUrl()}/mybb-migrator/status${withCounts ? "?counts=1" : ""}`,
+        url: `${apiUrl()}/mybb-migrator/status?counts=1${force ? "&refresh=1" : ""}`,
       },
       { silent: true },
     );
+
+    this.countsLoading = false;
     if (res) this.status = res;
-    this.loading = false;
     m.redraw();
-    this.managePolling();
+  }
+
+  /**
+   * Preserva as contagens já carregadas quando chega um status "leve" — sem
+   * isso as barras piscariam para vazio a cada ciclo de polling.
+   */
+  private merge(fresh: MigratorStatus): MigratorStatus {
+    const old = this.status;
+    if (!old) return fresh;
+
+    return {
+      ...fresh,
+      source: fresh.source ?? old.source,
+      target: fresh.target ?? old.target,
+      mediaStats: fresh.mediaStats ?? old.mediaStats,
+      countsAt: fresh.countsAt ?? old.countsAt,
+    };
+  }
+
+  /** Autodetecta hosts de imagem + pasta de uploads e grava nas configurações. */
+  async detectMedia(): Promise<DetectResult | null> {
+    this.busy = true;
+    const res = await apiCall<DetectResult>(
+      { method: "POST", url: `${apiUrl()}/mybb-migrator/detect-media`, body: { apply: true } },
+      { errorKey: "ramon-mybb-migrator.admin.images.detect_failed" },
+    );
+    this.busy = false;
+    await this.refresh(false);
+    return res;
   }
 
   private managePolling(): void {
+    // Depois de descartado nunca reabrimos o timer: um poller órfão continuaria
+    // redesenhando uma árvore que não está mais montada.
+    if (this.disposed) return;
+
     const running = this.isRunning();
     if (running && this.timer === null) {
       this.timer = window.setInterval(() => void this.tick(), 1500);
     } else if (!running && this.timer !== null) {
       window.clearInterval(this.timer);
       this.timer = null;
-      // terminou: uma última atualização para refletir contagens finais
-      void this.refresh(true);
+      // terminou: recalcula as contagens (agora elas mudaram de verdade)
+      void this.loadCounts(true);
     }
   }
 
@@ -80,7 +156,7 @@ export default class MigratorState {
     );
     this.inFlight = false;
     if (res) {
-      this.status = res;
+      this.status = this.merge(res);
       m.redraw();
       this.managePolling();
     }
@@ -93,7 +169,7 @@ export default class MigratorState {
       { errorKey: "ramon-mybb-migrator.admin.connection.save_failed" },
     );
     this.busy = false;
-    await this.refresh(true);
+    await this.refresh(false);
     return res;
   }
 
@@ -138,7 +214,7 @@ export default class MigratorState {
       { errorKey: "ramon-mybb-migrator.admin.cancel_failed" },
     );
     this.busy = false;
-    await this.refresh(true);
+    await this.refresh(false);
     return res;
   }
 

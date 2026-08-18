@@ -1,0 +1,122 @@
+name: CI
+
+# Gerado a partir do padrão usado em ramon/backup. Os jobs abaixo são só os que
+# esta extensão tem como executar — ver o gerador para o porquê.
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+  # Segunda 05:00 UTC. Como as dependências são resolvidas com `composer update`,
+  # o agendamento testa contra o flarum/core mais recente e detecta quebras
+  # trazidas por novas versões antes que cheguem a você.
+  schedule:
+    - cron: '0 5 * * 1'
+
+# Evita empilhar execuções redundantes para o mesmo PR ou branch.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default-deny do GITHUB_TOKEN; cada job declara o que precisa.
+permissions: {}
+
+jobs:
+  php:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Piso do flarum/core 2.x até a versão estável mais recente.
+        php: ['8.3', '8.4', '8.5']
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Validar composer.json
+        run: composer validate --strict --no-check-publish
+
+      - name: Lint PHP (php -l)
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find src migrations extend.php -name '*.php' -print0 2>/dev/null)
+          [ "${#files[@]}" -gt 0 ] || { echo "Nenhum arquivo PHP encontrado"; exit 1; }
+          printf '%s\0' "${files[@]}" | xargs -0 -n1 -P4 php -l
+
+      - name: Instalar dependências PHP
+        run: composer update --no-interaction --no-progress --prefer-dist
+
+      - name: Testes (PHPUnit)
+        run: vendor/bin/phpunit --testsuite unit
+
+  js:
+    name: JS
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Setup PHP (typings do core)
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache do composer
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Instalar dependências PHP
+        run: composer update --no-interaction --no-progress --prefer-dist --no-scripts
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: js/package-lock.json
+
+      - name: Instalar dependências JS
+        working-directory: js
+        run: npm ci
+
+      - name: Verificar formatação (Prettier)
+        working-directory: js
+        run: npm run format-check
+
+      - name: Type-check (TypeScript)
+        working-directory: js
+        run: npm run check-typings
+
+      - name: Build (webpack production)
+        working-directory: js
+        run: npm run build

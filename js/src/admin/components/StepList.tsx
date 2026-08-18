@@ -7,6 +7,7 @@ import type Mithril from "mithril";
 import type MigratorState from "../states/MigratorState";
 import type { Phase, StepDef, StepStatus } from "../types";
 import LiveConsole from "./LiveConsole";
+import ProgressBar from "./ProgressBar";
 
 interface Attrs extends ComponentAttrs {
   state: MigratorState;
@@ -15,7 +16,20 @@ interface Attrs extends ComponentAttrs {
   numbered?: boolean;
 }
 
-const BOOL_OPTS = ["dry-run", "like", "skip-file-check", "skip-soft-deleted", "recover-likers"];
+const BOOL_OPTS = [
+  "dry-run",
+  "like",
+  "skip-file-check",
+  "skip-soft-deleted",
+  "recover-likers",
+  "all-hosts",
+  "retry-failed",
+  "relink-only",
+  "include-hidden",
+];
+
+/** Opções cujo input é numérico (as demais com valor são texto livre). */
+const NUMBER_OPTS = ["limit", "max-mb", "max-file-mb", "posts"];
 
 const trans = (key: string, args: Record<string, unknown> = {}): string =>
   extractText(app.translator.trans(`ramon-mybb-migrator.admin.${key}`, args));
@@ -80,6 +94,12 @@ export default class StepList extends Component<Attrs> {
           <p className="MmStep-desc">{transOpt(`steps.desc.${def.key}`)}</p>
         )}
 
+        {/* Sempre renderizado: é o COMPONENTE que decide não desenhar nada sem
+            progresso. Alternar o vnode entre null e elemento no meio de irmãos
+            sem `key` faz o Mithril inserir em vez de atualizar, deixando o nó
+            anterior órfão no DOM — foi o que duplicava os cards em execução. */}
+        <ProgressBar progress={st?.progress ?? null} />
+
         {this.optionsRow(def)}
 
         <div className="MmStep-actions">
@@ -110,12 +130,15 @@ export default class StepList extends Component<Attrs> {
 
         {this.summaryView(st)}
 
-        {this.expanded[def.key] && (
-          <LiveConsole
-            text={isThisRunning ? this.attrs.state.status?.runningLog ?? "" : this.logs[def.key] ?? ""}
-            follow={isThisRunning}
-          />
-        )}
+        {/* Mesmo motivo: o container fica, só o conteúdo dele muda. */}
+        <div className="MmStep-log">
+          {this.expanded[def.key] ? (
+            <LiveConsole
+              text={isThisRunning ? this.attrs.state.status?.runningLog ?? "" : this.logs[def.key] ?? ""}
+              follow={isThisRunning}
+            />
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -160,7 +183,7 @@ export default class StepList extends Component<Attrs> {
               {opt}
               <input
                 className="FormControl FormControl--sm"
-                type={opt === "limit" ? "number" : "text"}
+                type={NUMBER_OPTS.includes(opt) ? "number" : "text"}
                 title={opt}
                 value={(store[opt] as string) ?? ""}
                 oninput={(e: InputEvent) =>

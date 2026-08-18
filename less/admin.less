@@ -614,3 +614,125 @@
     transform: rotate(360deg);
   }
 }
+
+// ---- Barra de progresso de um passo em execução ----
+// Com total conhecido a faixa é percentual; sem total ela desliza (estado
+// indeterminado), deixando claro que há trabalho acontecendo sem fingir saber
+// quanto falta.
+.MmBar {
+  margin: 8px 0;
+}
+
+.MmBar-track {
+  height: 8px;
+  background: #e7ebf0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.MmBar-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--mm-accent, #1d4ed8);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.MmBar--indeterminate .MmBar-fill {
+  width: 35%;
+  animation: mm-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes mm-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.MmBar-text {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #555;
+}
+
+// ---- Cabeçalho do card de contagens (as contagens chegam depois) ----
+.MmProgress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+
+  h4 {
+    margin: 0;
+  }
+}
+
+.MmProgress-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+// ---- Atalho "migrar imagens desta discussão" ----
+.MmDiscussion-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  .FormControl {
+    flex: 1 1 auto;
+  }
+}
+
+// ---- Resultado da autodetecção de hosts ----
+.MmDetect {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #f6f8fa;
+  border-radius: 4px;
+}
+
+.MmDetect-head {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+// Host aplicado ao filtro x host deixado de fora (cauda longa) — visível, nunca
+// cortado em silêncio.
+.MmChip--on {
+  background: #e3f2e6;
+  color: #1b5e20;
+}
+
+.MmChip--off {
+  background: #eef1f5;
+  color: #777;
+}
+
+// O container do banner existe SEMPRE (mesmo vazio) para manter a forma da
+// árvore estável entre redraws — ver o comentário em MigratorDashboard.view().
+// Vazio ele não ocupa espaço; com conteúdo, a margem vem do próprio .MmRunning.
+.MmDashboard-banner:empty {
+  display: none;
+}
+
+// Idem ao banner: container fixo, conteúdo variável (ver StepList.card()).
+.MmStep-log:empty {
+  display: none;
+}
+
+// A lista detectada passa de 400 hosts — precisa de área de texto rolável e
+// fonte monoespaçada para dar para conferir/podar.
+.MmHostsInput {
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 70px;
+}

@@ -52,6 +52,19 @@ class SaveConnectionController implements RequestHandlerInterface
             $this->settings->set('mybb-migrator.old_site_url', rtrim(trim((string) $body['old_site_url']), '/'));
         }
 
+        // --- Aba Imagens: filtro de hosts + orçamento padrão de um run ---
+        if (array_key_exists('image_hosts', $body)) {
+            $this->settings->set('mybb-migrator.image_hosts', $this->normalizeHosts((string) $body['image_hosts']));
+        }
+        if (array_key_exists('attachments_dir', $body)) {
+            $this->settings->set('mybb-migrator.attachments_dir', trim((string) $body['attachments_dir']));
+        }
+        foreach (['image_limit', 'image_max_mb', 'image_max_file_mb'] as $field) {
+            if (array_key_exists($field, $body)) {
+                $this->settings->set('mybb-migrator.' . $field, (string) max(0, (int) $body[$field]));
+            }
+        }
+
         $phpInfo = null;
         if (array_key_exists('php_binary', $body)) {
             $php = trim((string) $body['php_binary']);
@@ -62,5 +75,36 @@ class SaveConnectionController implements RequestHandlerInterface
         }
 
         return new JsonResponse(['ok' => true, 'php' => $phpInfo]);
+    }
+
+    /**
+     * O admin digita o que for mais natural — uma URL completa, um host, vários
+     * separados por vírgula/quebra de linha. Guardamos uma lista canônica,
+     * separada por vírgula, e reduzimos "https://i.imgur.com/" a "i.imgur.com"
+     * (URL sem caminho = host), que é o que o filtro do comando compara.
+     */
+    private function normalizeHosts(string $raw): string
+    {
+        $out = [];
+
+        foreach (preg_split('/[\s,;]+/', $raw) ?: [] as $entry) {
+            $entry = strtolower(trim((string) $entry));
+            if ($entry === '') {
+                continue;
+            }
+
+            if (str_contains($entry, '://')) {
+                $path = (string) parse_url($entry, PHP_URL_PATH);
+                $entry = ($path === '' || $path === '/')
+                    ? (string) parse_url($entry, PHP_URL_HOST)
+                    : rtrim($entry, '/');
+            }
+
+            if ($entry !== '' && ! in_array($entry, $out, true)) {
+                $out[] = $entry;
+            }
+        }
+
+        return implode(',', $out);
     }
 }

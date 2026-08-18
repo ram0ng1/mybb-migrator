@@ -9,6 +9,7 @@
 require __DIR__ . '/../src/Support/Charset.php';
 require __DIR__ . '/../src/Support/MybbPassword.php';
 require __DIR__ . '/../src/Support/TapatalkEmoji.php';
+require __DIR__ . '/../src/Support/ImageFetcher.php';
 require __DIR__ . '/../src/Console/PollOptionsParser.php';
 require __DIR__ . '/../src/Console/MessagesGrouping.php';
 require __DIR__ . '/../src/BBCode/Converter.php';
