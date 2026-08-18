@@ -247,6 +247,7 @@ ramon-mybb-migrator:
         images: Downloads the remote images used by migrated posts and repoints the posts at the local copies. Skips URLs already localized; remembers dead ones.
         attachments: Migrates MyBB post attachments into local storage and appends them to the migrated posts.
         optimize-media: Re-encodes files already localized (WebP + resize), repoints the posts and the media manager at the new file, then deletes the old one. For anything migrated before optimization existed.
+        optimize-media-all: Every image in this forum in one pass — localized files, files on disk with no map row, and avatars. Files already optimized cost nothing (no gain, left untouched), so it is safe to re-run.
         legacy-passwords: Backfill mybb_legacy_passwords for existing users (carry MyBB passwords to an already-migrated Flarum). Skips users that already have a row.
 
   # Saída dos comandos `mybb:*` — é ela que aparece no console do painel.
@@ -357,8 +358,14 @@ ramon-mybb-migrator:
       kind_image: images
       kind_attachment: attachments
       scope_limit: "(max {count} files)"
+      scope_orphans: files with no map row
+      scope_avatars: avatars
+      sweep_orphans: "Files on disk with no map row: {count}"
+      sweep_avatars: "Avatars: {count}"
+      limit_hit: "⚠ Run limit reached — run the step again to carry on; files already optimized are skipped in seconds."
+
       dry_run: "*** DRY-RUN — nothing will be written, repointed or deleted ***"
-      total: "Files in the map: {count}"
+      total: "Files to examine: {count}"
       progress: "{count} optimized"
       failed: "  could not optimize {name}: {error}"
       missing_hint: "⚠ Files missing from disk stay marked `ok` in the map: those rows had their file removed from outside. Nothing was changed in them."
@@ -369,6 +376,7 @@ ramon-mybb-migrator:
         posts: posts updated
         skipped: no gain / not applicable
         missing: missing on disk
+        avatars: avatars repointed
         failed: failures
         before: MB before
         after: MB after

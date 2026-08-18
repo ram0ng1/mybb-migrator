@@ -124,6 +124,40 @@ final class ImageStore
         }
     }
 
+    /**
+     * Todo arquivo já gravado por esta extensão, dos DOIS lados.
+     *
+     * Serve à varredura de otimização: o mapa `mybb_migrated_images` conhece o
+     * que ESTA extensão baixou, mas a pasta também guarda o que veio por outros
+     * caminhos (uploads de verdade, execuções antigas, arquivos adotados). Uma
+     * varredura "todas as imagens" precisa enxergar o disco, não só o mapa.
+     *
+     * @return array<int, string> nomes de arquivo (sem caminho)
+     */
+    public function listStoredNames(): array
+    {
+        $names = [];
+
+        try {
+            foreach ($this->disk()->files(self::DIR) as $path) {
+                $names[] = basename((string) $path);
+            }
+        } catch (\Throwable $e) {
+            // disco indisponível: a varredura segue com o que houver do outro lado
+        }
+
+        $privateDir = $this->private->directoryHint();
+        if (is_dir($privateDir)) {
+            foreach ((array) scandir($privateDir) as $entry) {
+                if ($entry !== '.' && $entry !== '..' && is_file($privateDir . DIRECTORY_SEPARATOR . $entry)) {
+                    $names[] = $entry;
+                }
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
     /** O arquivo mora fora do document root? */
     public function storedPrivately(string $name): bool
     {

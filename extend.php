@@ -102,6 +102,9 @@ return [
         ->default('mybb-migrator.image_webp', 1)
         ->default('mybb-migrator.image_quality', 82)
         ->default('mybb-migrator.image_max_dim', 1600)
+        // Ganho mínimo para trocar o arquivo. 5% evita reescrever um acervo
+        // inteiro por causa de bytes; 0 troca sempre que o WebP não sair maior.
+        ->default('mybb-migrator.image_min_gain', 5)
         // Ritmo de rede: sem isto, varrer centenas de imagens do mesmo host
         // (i.imgur.com) rende HTTP 429 em bloco.
         ->default('mybb-migrator.image_retries', 3)

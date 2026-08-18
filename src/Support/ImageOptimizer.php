@@ -107,9 +107,15 @@ final class ImageOptimizer
      * animação, decodificação falha, resultado maior) devolve o ORIGINAL — a
      * otimização nunca pode ser motivo de perder uma imagem.
      *
+     * `$force` desliga só a regra do ganho mínimo, para o caso em que a
+     * conversão é uma QUESTÃO DE CORREÇÃO e não de tamanho: as variantes @2x/@3x
+     * de um avatar precisam ter a mesma extensão do arquivo base, porque o
+     * srcset do Flarum deriva o caminho delas a partir dele. As recusas de
+     * formato (animado, SVG, AVIF, bytes que não decodificam) continuam valendo.
+     *
      * @return array{bytes: string, mime: string, ext: string, changed: bool, saved: int, note: ?string}
      */
-    public function optimize(string $bytes, ?string $mime, ?string $ext): array
+    public function optimize(string $bytes, ?string $mime, ?string $ext, bool $force = false): array
     {
         $mime = strtolower((string) $mime);
         $ext = strtolower((string) ($ext !== null && $ext !== '' ? $ext : ImageFetcher::extensionFor($mime) ?? ''));
@@ -175,10 +181,13 @@ final class ImageOptimizer
         }
 
         $original = strlen($bytes);
-        $limit = $resized
+        $limit = match (true) {
+            // Conversão obrigatória: aceita mesmo saindo maior.
+            $force   => PHP_INT_MAX,
             // Redimensionou: qualquer ganho serve, o objetivo era a dimensão.
-            ? $original
-            : (int) floor($original * (1 - $this->minGainPercent / 100));
+            $resized => $original,
+            default  => (int) floor($original * (1 - $this->minGainPercent / 100)),
+        };
 
         if (strlen($encoded) > $limit) {
             return $keep;

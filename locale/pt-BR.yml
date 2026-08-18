@@ -248,6 +248,7 @@ ramon-mybb-migrator:
         images: Baixa as imagens remotas usadas pelos posts migrados e reaponta os posts para a cópia local. Pula URLs já internalizadas; lembra as mortas.
         attachments: Migra os anexos dos posts do MyBB para o armazenamento local e os acrescenta aos posts migrados.
         optimize-media: Reencoda o que já foi internalizado (WebP + redimensionamento), reaponta os posts e o gerenciador de mídia para o arquivo novo e só então apaga o antigo. Para o que foi migrado antes de a otimização existir.
+        optimize-media-all: TODAS as imagens do fórum numa passada — arquivos internalizados, arquivos em disco sem linha no mapa e avatares. O que já está otimizado não custa nada (não rende ganho e fica intacto), então dá para rodar de novo à vontade.
         legacy-passwords: Preenche mybb_legacy_passwords para usuários já existentes (leva as senhas do MyBB a um Flarum já migrado). Pula quem já tem linha.
 
   # Saída dos comandos `mybb:*` — é ela que aparece no console do painel.
@@ -358,8 +359,14 @@ ramon-mybb-migrator:
       kind_image: imagens
       kind_attachment: anexos
       scope_limit: "(máx {count} arquivos)"
+      scope_orphans: arquivos sem linha no mapa
+      scope_avatars: avatares
+      sweep_orphans: "Arquivos em disco sem linha no mapa: {count}"
+      sweep_avatars: "Avatares: {count}"
+      limit_hit: "⚠ Limite do run atingido — rode o passo de novo para continuar; o que já foi otimizado é pulado em segundos."
+
       dry_run: "*** DRY-RUN — nada será gravado, reapontado nem apagado ***"
-      total: "Arquivos no mapa: {count}"
+      total: "Arquivos a examinar: {count}"
       progress: "{count} otimizados"
       failed: "  falha ao otimizar {name}: {error}"
       missing_hint: "⚠ Arquivos ausentes no disco continuam marcados como `ok` no mapa: são linhas cujo arquivo foi apagado por fora. Nada foi alterado neles."
@@ -370,6 +377,7 @@ ramon-mybb-migrator:
         posts: posts atualizados
         skipped: sem ganho / não aplicável
         missing: ausentes no disco
+        avatars: avatares reapontados
         failed: falhas
         before: MB antes
         after: MB depois

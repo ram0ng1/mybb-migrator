@@ -43,7 +43,8 @@ trait MediaFetchOptions
             ->addOption('no-optimize', null, InputOption::VALUE_NONE, 'Store the bytes exactly as downloaded: no re-encoding, no resizing.')
             ->addOption('no-webp', null, InputOption::VALUE_NONE, 'Optimize without converting to WebP (keeps the original format).')
             ->addOption('quality', null, InputOption::VALUE_REQUIRED, 'Re-encoding quality, 30-100.')
-            ->addOption('max-dim', null, InputOption::VALUE_REQUIRED, 'Resize images whose longest side exceeds this many pixels (0 = never resize).');
+            ->addOption('max-dim', null, InputOption::VALUE_REQUIRED, 'Resize images whose longest side exceeds this many pixels (0 = never resize).')
+            ->addOption('min-gain', null, InputOption::VALUE_REQUIRED, 'Minimum size gain, in percent, for the re-encoded file to be kept (0 = keep whenever it is not bigger).');
     }
 
     protected function fetchRetries(SettingsRepositoryInterface $settings): int
@@ -84,6 +85,7 @@ trait MediaFetchOptions
             $webp,
             $this->mediaIntOpt('quality', (int) ($settings->get('mybb-migrator.image_quality') ?: 82)),
             $this->mediaIntOpt('max-dim', (int) ($settings->get('mybb-migrator.image_max_dim') ?? 1600)),
+            $this->mediaIntOpt('min-gain', (int) ($settings->get('mybb-migrator.image_min_gain') ?? 5)),
         );
     }
 

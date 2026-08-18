@@ -54,12 +54,18 @@ class StepCatalog
             // Ficam de fora de "Rodar tudo" DE PROPÓSITO: baixam arquivos da
             // internet e consomem disco, então são sempre uma decisão explícita,
             // com limite, depois de conferir o resultado numa amostra.
-            self::s('images',      'mybb:images',      'media', options: ['dry-run', 'discussion', 'limit', 'max-mb', 'max-file-mb', 'hosts', 'all-hosts', 'posts', 'retry-failed', 'relink-only', 'no-optimize', 'no-webp', 'quality', 'max-dim', 'host-delay', 'retries'], manual: true),
-            self::s('attachments', 'mybb:attachments', 'media', options: ['dry-run', 'limit', 'max-mb', 'max-file-mb', 'uploads-dir', 'include-hidden', 'retry-failed', 'no-optimize', 'no-webp', 'quality', 'max-dim', 'host-delay', 'retries'], manual: true),
+            self::s('images',      'mybb:images',      'media', options: ['dry-run', 'discussion', 'limit', 'max-mb', 'max-file-mb', 'hosts', 'all-hosts', 'posts', 'retry-failed', 'relink-only', 'no-optimize', 'no-webp', 'quality', 'max-dim', 'min-gain', 'host-delay', 'retries'], manual: true),
+            self::s('attachments', 'mybb:attachments', 'media', options: ['dry-run', 'limit', 'max-mb', 'max-file-mb', 'uploads-dir', 'include-hidden', 'retry-failed', 'no-optimize', 'no-webp', 'quality', 'max-dim', 'min-gain', 'host-delay', 'retries'], manual: true),
             // Reencoda o que JÁ está no disco (quem migrou antes da otimização
             // existir, ou rodou com --no-optimize). Troca o arquivo, a linha do
             // fof/upload e a URL dentro dos posts, nessa ordem.
-            self::s('optimize-media', 'mybb:optimize-media', 'media', options: ['dry-run', 'limit', 'kind', 'quality', 'max-dim', 'no-webp', 'keep-old'], manual: true),
+            self::s('optimize-media', 'mybb:optimize-media', 'media', options: ['dry-run', 'limit', 'kind', 'quality', 'max-dim', 'min-gain', 'no-webp', 'keep-old', 'include-orphans', 'include-avatars', 'skip-map'], manual: true),
+
+            // O mesmo comando com `--all`: mapa + arquivos sem linha no mapa +
+            // avatares, sem limite. É o "trate TODAS as imagens" — inclusive as
+            // que já passaram por aqui, que simplesmente não rendem ganho e são
+            // devolvidas intactas.
+            self::s('optimize-media-all', 'mybb:optimize-media', 'media', fixedArgs: ['all'], options: ['dry-run', 'limit', 'quality', 'max-dim', 'min-gain', 'no-webp', 'keep-old'], manual: true),
 
             // ---- Fase 3: limpeza / fidelidade (rodar só o que precisar) ----
             self::s('fix-charset',          'mybb:fix-charset',          '3'),

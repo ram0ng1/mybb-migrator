@@ -29,6 +29,9 @@ const BOOL_OPTS = [
   "no-optimize",
   "no-webp",
   "keep-old",
+  "include-orphans",
+  "include-avatars",
+  "skip-map",
 ];
 
 /** Opções cujo input é numérico (as demais com valor são texto livre). */
@@ -39,6 +42,7 @@ const NUMBER_OPTS = [
   "posts",
   "quality",
   "max-dim",
+  "min-gain",
   "host-delay",
   "retries",
 ];
