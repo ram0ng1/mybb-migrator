@@ -52,6 +52,8 @@ export interface ConnectionMeta {
   db: string;
   prefix: string;
   old_site_url: string;
+  /** Idioma da saída dos comandos; vazio = default_locale do fórum. */
+  cli_locale: string;
   password_set: boolean;
   php_binary: string;
   php_resolved: string;
@@ -174,6 +176,7 @@ export interface ConnectionPayload {
   prefix?: string;
   php_binary?: string;
   old_site_url?: string;
+  cli_locale?: string;
   image_hosts?: string;
   image_limit?: string | number;
   image_max_mb?: string | number;

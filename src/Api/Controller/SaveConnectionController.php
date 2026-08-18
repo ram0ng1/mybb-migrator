@@ -47,6 +47,12 @@ class SaveConnectionController implements RequestHandlerInterface
             $this->settings->set('mybb_password', (string) $body['password']);
         }
 
+        // Idioma da saída dos comandos (o console do painel mostra essa saída).
+        // Vazio = segue o default_locale do fórum.
+        if (array_key_exists('cli_locale', $body)) {
+            $this->settings->set('mybb-migrator.cli_locale', trim((string) $body['cli_locale']));
+        }
+
         // URL do site antigo (para a aba Comparar).
         if (array_key_exists('old_site_url', $body)) {
             $this->settings->set('mybb-migrator.old_site_url', rtrim(trim((string) $body['old_site_url']), '/'));

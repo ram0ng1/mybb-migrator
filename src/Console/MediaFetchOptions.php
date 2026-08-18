@@ -87,15 +87,47 @@ trait MediaFetchOptions
         );
     }
 
-    /** Linha única de log com o que foi decidido para a rede. */
+    /**
+     * Linha única de log com o que foi decidido para a rede.
+     * Depende do {@see TranslatesOutput} (todo comando que chama isto o usa).
+     */
     protected function describeFetch(SettingsRepositoryInterface $settings, int $timeout): string
     {
-        return sprintf(
-            '%d retentativa(s) em falha transitoria, %d ms entre requisicoes ao mesmo host, %ds sem tráfego para desistir',
-            $this->fetchRetries($settings),
-            $this->fetchHostDelay($settings),
-            $timeout
-        );
+        return $this->trans('common.network_summary', [
+            'retries' => $this->fetchRetries($settings),
+            'delay'   => $this->fetchHostDelay($settings),
+            'timeout' => $timeout,
+        ]);
+    }
+
+    /**
+     * Idem para a otimização. O ImageOptimizer é puro e não conhece tradutor —
+     * ele expõe a configuração, a frase é montada aqui.
+     */
+    protected function describeOptimizer(ImageOptimizer $optimizer): string
+    {
+        if (! $optimizer->enabled()) {
+            return $this->trans('common.optimizer_disabled');
+        }
+
+        if (! $optimizer->available()) {
+            return $this->trans('common.optimizer_unavailable');
+        }
+
+        $format = match (true) {
+            $optimizer->webpAvailable() => $this->trans('common.optimizer_format_webp'),
+            $optimizer->wantsWebp()     => $this->trans('common.optimizer_format_source_no_webp'),
+            default                     => $this->trans('common.optimizer_format_source'),
+        };
+
+        return $this->trans('common.optimizer_summary', [
+            'format'  => $format,
+            'quality' => $optimizer->quality(),
+            'size'    => $optimizer->maxDimension() > 0
+                ? $this->trans('common.optimizer_max_pixels', ['pixels' => $optimizer->maxDimension()])
+                : $this->trans('common.optimizer_no_resize'),
+            'gain'    => $optimizer->minGain(),
+        ]);
     }
 
     private function mediaIntOpt(string $name, int $default): int

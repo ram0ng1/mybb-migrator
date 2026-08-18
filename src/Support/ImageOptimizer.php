@@ -70,27 +70,36 @@ final class ImageOptimizer
         return $this->webp && function_exists('imagewebp');
     }
 
-    /** Linha de log com a configuração efetiva. */
-    public function describe(): string
+    /**
+     * Configuração efetiva, para quem precisa DESCREVÊ-LA.
+     *
+     * A frase de log não mora aqui de propósito: esta classe é pura (roda nos
+     * testes sem o Flarum) e a frase precisa passar pelo tradutor. Quem monta o
+     * texto é o MediaFetchOptions, que tem o translator em mãos.
+     */
+    public function enabled(): bool
     {
-        if (! $this->enabled) {
-            return 'desligada';
-        }
-        if (! $this->available()) {
-            return 'indisponível (GD ausente) — arquivos gravados como vieram';
-        }
+        return $this->enabled;
+    }
 
-        $format = $this->webpAvailable()
-            ? 'webp'
-            : ($this->webp ? 'formato de origem (GD sem suporte a webp)' : 'formato de origem');
+    public function wantsWebp(): bool
+    {
+        return $this->webp;
+    }
 
-        return sprintf(
-            '%s, qualidade %d, máx %s, ganho mínimo %d%%',
-            $format,
-            $this->quality,
-            $this->maxDimension > 0 ? $this->maxDimension . ' px' : 'sem redimensionar',
-            $this->minGainPercent
-        );
+    public function quality(): int
+    {
+        return $this->quality;
+    }
+
+    public function maxDimension(): int
+    {
+        return $this->maxDimension;
+    }
+
+    public function minGain(): int
+    {
+        return $this->minGainPercent;
     }
 
     /**

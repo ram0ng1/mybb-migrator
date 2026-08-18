@@ -106,6 +106,7 @@ class StatusController implements RequestHandlerInterface
             'db'               => (string) ($this->settings->get('mybb_db') ?: 'mybb'),
             'prefix'           => (string) ($this->settings->get('mybb_prefix') ?: 'mybb_'),
             'old_site_url'     => (string) ($this->settings->get('mybb-migrator.old_site_url') ?? ''),
+            'cli_locale'       => (string) ($this->settings->get('mybb-migrator.cli_locale') ?? ''),
             'password_set'     => ((string) ($this->settings->get('mybb_password') ?? '')) !== '',
             'php_binary'       => $php,
             'php_resolved'     => $resolved,

@@ -37,6 +37,12 @@ ramon-mybb-migrator:
       php_none: Não foi possível determinar o PHP do Flarum — informe o caminho manualmente.
       old_site_url: URL do site antigo (para a aba Comparar)
       old_site_hint: "URL base do fórum MyBB no ar, ex.: https://exemplo.com — usada para abrir/pré-visualizar o post original."
+      cli_locale: Idioma da saída no console (opcional)
+      cli_locale_hint: >-
+        Idioma da saída dos passos de migração mostrada no console abaixo. Vazio
+        segue o idioma padrão do fórum — preencha só para registrar o log em
+        outro idioma (qualquer um instalado, ex.: pt-BR). Uma execução avulsa
+        pode trocar com --locale=xx.
       fields:
         host: Host
         port: Porta
@@ -243,3 +249,128 @@ ramon-mybb-migrator:
         attachments: Migra os anexos dos posts do MyBB para o armazenamento local e os acrescenta aos posts migrados.
         optimize-media: Reencoda o que já foi internalizado (WebP + redimensionamento), reaponta os posts e o gerenciador de mídia para o arquivo novo e só então apaga o antigo. Para o que foi migrado antes de a otimização existir.
         legacy-passwords: Preenche mybb_legacy_passwords para usuários já existentes (leva as senhas do MyBB a um Flarum já migrado). Pula quem já tem linha.
+
+  # Saída dos comandos `mybb:*` — é ela que aparece no console do painel.
+  cli:
+    common:
+      force_required: "Rode com --force."
+      done: Concluído.
+      dry_run_done: Dry-run concluído.
+      dry_run: "*** DRY-RUN — nada será baixado nem gravado ***"
+      unknown_error: erro desconhecido
+      map_missing: "Tabela mybb_migrated_images ausente — rode `php flarum migrate`. Detalhe: {error}"
+      map_write_failed: "  não foi possível gravar o mapa para {key}: {error}"
+      line_destination: "Destino : {path}"
+      line_limits: "Limites : {limits}"
+      line_network: "Rede    : {summary}"
+      line_optimize: "Otimiza : {summary}"
+      line_scope: "Escopo  : {scope}"
+      limit_volume: "{count} MB"
+      limit_volume_none: sem limite de volume
+      limit_per_file: "{count} MB por arquivo"
+      network_summary: "{retries} retentativa(s) em falha transitória, {delay} ms entre requisições ao mesmo host, {timeout}s sem tráfego para desistir"
+      optimizer_disabled: desligada
+      optimizer_unavailable: "indisponível (sem GD) — arquivos gravados como vieram"
+      optimizer_summary: "{format}, qualidade {quality}, máx {size}, ganho mínimo {gain}%"
+      optimizer_format_webp: webp
+      optimizer_format_source: formato de origem
+      optimizer_format_source_no_webp: "formato de origem (este GD não tem suporte a webp)"
+      optimizer_max_pixels: "{pixels} px"
+      optimizer_no_resize: sem redimensionar
+      optimized: "  ↓ {name} {note}"
+      optimized_url: "  ↓ {note}"
+      stats:
+        optimized: imagens otimizadas
+        saved: MB poupados otimizando
+        failed: falhas
+        deferred: adiadas (429/timeout)
+
+    images:
+      discussion_unresolved: "Não consegui extrair o id da discussão de \"{value}\". Cole a URL inteira (.../d/1661-titulo) ou informe só o número."
+      detecting_hosts: "Nenhum host configurado — detectando a partir dos posts migrados…"
+      no_external_images: "Nenhuma imagem externa encontrada nos posts varridos. Nada a internalizar (ou o conteúdo ainda não foi migrado)."
+      hosts_applied: "  {hosts} host(s) aplicados, {images} imagens em {scanned} posts varridos{sample}."
+      sample_suffix: (amostra)
+      hosts_more: "    … e mais {count} host(s), todos incluídos. A lista completa está na aba \"Imagens\"."
+      restricted: "  restrito: {path}  (imagens de discussão invisível ao visitante nascem AQUI, nunca no público)"
+      line_hosts: "Hosts   : {hosts}"
+      hosts_all: (todos os externos)
+      limit_downloads: "{count} downloads"
+      limit_downloads_none: sem limite de downloads
+      no_upload_table: "⚠ fof/upload não está instalado: os arquivos são gravados e apontados normalmente, só não aparecem no gerenciador de mídia. Instale e habilite o fof/upload e rode de novo para registrá-los."
+      relink_only: "*** RELINK-ONLY — sem acesso à rede ***"
+      map_known: "URLs já conhecidas no mapa: {count}"
+      scope_discussion: "discussão {id} ({count} posts com imagem)"
+      progress: "  {scanned} posts varridos, {downloaded} imagens baixadas…"
+      moved_private: "  {count} arquivo(s) movido(s) para fora do diretório público pelo escopo de tags."
+      dry_download: "  [dry-run] baixaria {url}"
+      deferred: "⏳ adiada {url} — {error}"
+      failed: "⚠ falhou {url} — {error}"
+      budget_hit: "⚠ Limite do run atingido — a varredura parou antes do fim. Rode de novo (com um limite maior) para continuar de onde parou; nada já baixado é rebaixado."
+      failed_hint: "⚠ URLs que falharam ficam registradas e não são retentadas sozinhas (a maioria é imagem realmente apagada na origem). Use --retry-failed para tentar de novo."
+      deferred_hint: "⏳ {count} URL(s) adiadas por limite de requisições (429) ou lentidão do host — NÃO são imagens perdidas. Rode o passo de novo, sem --retry-failed, que elas voltam a ser tentadas; se o host insistir no 429, aumente --host-delay."
+      stats:
+        scanned: posts varridos
+        candidates: imagens candidatas
+        downloaded: imagens baixadas
+        private: gravadas fora do público
+        relinked: imagens reapontadas
+        posts: posts atualizados
+        mb: MB baixados
+        skipped_host: puladas (host de fora)
+        skipped_local: puladas (já locais)
+        skipped_failed: puladas (falha anterior)
+
+    attachments:
+      uploads_detected: "Pasta de uploads detectada: {path}"
+      uploads_not_found: "Não encontrei a pasta uploads do MyBB. Diretórios testados: {paths}"
+      uploads_missing: "Pasta de uploads não encontrada: {path}"
+      no_source: "Sem origem para os anexos: informe a pasta de uploads do MyBB na aba \"Imagens\" (ou --uploads-dir=…), ou preencha a URL do site antigo na aba Conexão."
+      line_source: "Origem  : {source}"
+      source_local: "pasta local {path}"
+      source_download: "download em {url}"
+      restricted: "  restrito: {path}  (anexos de discussão invisível ao visitante nascem AQUI)"
+      limit_files: "{count} anexos"
+      limit_files_none: sem limite
+      optimize_images_only: (só vale para anexos de imagem)
+      no_upload_table: "⚠ fof/upload não está instalado: os anexos são gravados e linkados no post, só não aparecem no gerenciador de mídia."
+      dry_migrate: "  [dry-run] migraria aid={aid} ({file}) para o post {post}"
+      deferred: "⏳ adiado aid={aid} ({file}) — {error}"
+      failed: "⚠ falhou aid={aid} ({file}) — {error}"
+      moved_private: "  {count} anexo(s) movido(s) para fora do diretório público pelo escopo de tags."
+      unparse_failed: "  post {post}: não foi possível desmontar o conteúdo ({error}); anexo não inserido."
+      parse_failed: "  post {post}: formatter falhou ao remontar ({error}); anexo não inserido."
+      budget_hit: "⚠ Limite do run atingido — rode de novo (com um limite maior) para continuar."
+      failed_hint: "⚠ Falhas ficam registradas e não são retentadas sozinhas. Depois de corrigir a origem (--uploads-dir apontando para a pasta uploads do MyBB é o caminho confiável), rode de novo com --retry-failed."
+      deferred_hint: "⏳ {count} anexo(s) adiados por limite de requisições ou lentidão do site antigo — basta rodar o passo de novo, sem --retry-failed, que eles voltam a ser tentados."
+      stats:
+        seen: anexos no MyBB
+        copied: arquivos migrados
+        private: gravados fora do público
+        appended: posts com anexo inserido
+        already: já migrados antes
+        missing_post: post inexistente
+        mb: MB transferidos
+
+    optimize:
+      unavailable: "Otimização indisponível: este PHP não tem GD (ou --no-optimize foi passado). Nada a fazer."
+      kind_all: imagens e anexos
+      kind_image: imagens
+      kind_attachment: anexos
+      scope_limit: "(máx {count} arquivos)"
+      dry_run: "*** DRY-RUN — nada será gravado, reapontado nem apagado ***"
+      total: "Arquivos no mapa: {count}"
+      progress: "{count} otimizados"
+      failed: "  falha ao otimizar {name}: {error}"
+      missing_hint: "⚠ Arquivos ausentes no disco continuam marcados como `ok` no mapa: são linhas cujo arquivo foi apagado por fora. Nada foi alterado neles."
+      stats:
+        seen: arquivos analisados
+        optimized: otimizados
+        renamed: renomeados (novo formato)
+        posts: posts atualizados
+        skipped: sem ganho / não aplicável
+        missing: ausentes no disco
+        failed: falhas
+        before: MB antes
+        after: MB depois
+        saved: economia

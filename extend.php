@@ -78,6 +78,12 @@ return [
         // travado. Alto de propósito: operações silenciosas longas (COUNT/DELETE
         // em massa) não devem ser marcadas como falha nem reabrir o guard.
         ->default('mybb-migrator.stale_seconds', 600)
+        // Idioma da SAÍDA dos comandos `mybb:*` — é ela que o console do painel
+        // mostra. Vazio de propósito: segue o idioma padrão do fórum, sem uma
+        // segunda configuração de idioma para manter em dia. Preencher aqui é
+        // para quem quer o log num idioma diferente do fórum; `--locale=xx`
+        // ganha de ambos, numa execução só.
+        ->default('mybb-migrator.cli_locale', '')
         // --- Migração de imagens/anexos (aba "Imagens" do painel) ---
         // Hosts (ou prefixos de URL) cujas imagens viram arquivos locais. Vazio
         // = nada é internalizado sem --all-hosts, de propósito: um fórum antigo

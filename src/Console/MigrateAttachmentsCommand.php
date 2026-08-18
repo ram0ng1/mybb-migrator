@@ -4,6 +4,7 @@ namespace Ramon\MybbMigrator\Console;
 
 use Flarum\Console\AbstractCommand;
 use Flarum\Formatter\Formatter;
+use Flarum\Locale\LocaleManager;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Database\ConnectionInterface;
 use Ramon\MybbMigrator\Gui\MediaDetector;
@@ -40,6 +41,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
 {
     use MediaFetchOptions;
     use MybbConnectionOptions;
+    use TranslatesOutput;
 
     private int $seen = 0;
     private int $copied = 0;
@@ -68,6 +70,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
         protected MediaDetector $detector,
         protected UploadVisibilityBridge $visibility,
         protected PrivateUploadBridge $private,
+        protected LocaleManager $locales,
     ) {
         parent::__construct();
     }
@@ -88,12 +91,15 @@ class MigrateAttachmentsCommand extends AbstractCommand
             ->addOption('timeout', null, InputOption::VALUE_REQUIRED, 'Idle timeout per request, in seconds: a download that keeps progressing is no longer killed.');
         $this->addMediaFetchOptions();
         $this->addMybbConnectionOptions();
+        $this->addLocaleOption();
     }
 
     protected function fire(): int
     {
+        $this->applyLocale();
+
         if (! $this->input->getOption('force')) {
-            $this->error('Run with --force.');
+            $this->error($this->trans('common.force_required'));
 
             return 1;
         }
@@ -118,23 +124,21 @@ class MigrateAttachmentsCommand extends AbstractCommand
             if ($found['path'] !== null) {
                 $uploadsDir = $found['path'];
                 $this->settings->set('mybb-migrator.attachments_dir', $uploadsDir);
-                $this->info("Pasta de uploads detectada: {$uploadsDir}");
+                $this->info($this->trans('attachments.uploads_detected', ['path' => $uploadsDir]));
             } elseif ($found['checked'] !== []) {
-                $this->info('Não encontrei a pasta uploads do MyBB. Diretórios testados: '
-                    . implode(', ', array_slice($found['checked'], 0, 8)));
+                $this->info($this->trans('attachments.uploads_not_found', [
+                    'paths' => implode(', ', array_slice($found['checked'], 0, 8)),
+                ]));
             }
         }
 
         if ($uploadsDir !== '' && ! is_dir($uploadsDir)) {
-            $this->error("Pasta de uploads não encontrada: {$uploadsDir}");
+            $this->error($this->trans('attachments.uploads_missing', ['path' => $uploadsDir]));
 
             return 1;
         }
         if ($uploadsDir === '' && $oldSite === '') {
-            $this->error(
-                'Sem origem para os anexos: informe a pasta de uploads do MyBB na aba "Imagens" '
-                . '(ou --uploads-dir=...), ou preencha a URL do site antigo na aba Conexão.'
-            );
+            $this->error($this->trans('attachments.no_source'));
 
             return 1;
         }
@@ -144,25 +148,31 @@ class MigrateAttachmentsCommand extends AbstractCommand
         $fetcher = $this->buildFetcher($this->settings, $timeout, $maxBytes);
         $optimizer = $this->buildOptimizer($this->settings);
 
-        $this->info('Origem : ' . ($uploadsDir !== '' ? "pasta local {$uploadsDir}" : "download em {$oldSite}/attachment.php"));
+        $this->info($this->trans('attachments.line_source', [
+            'source' => $uploadsDir !== ''
+                ? $this->trans('attachments.source_local', ['path' => $uploadsDir])
+                : $this->trans('attachments.source_download', ['url' => $oldSite . '/attachment.php']),
+        ]));
         if ($this->private->available()) {
-            $this->info('Restrito: ' . $this->private->directoryHint()
-                . '  (anexos de discussão invisível ao visitante nascem AQUI)');
+            $this->info($this->trans('attachments.restricted', ['path' => $this->private->directoryHint()]));
         }
-        $this->info('Limites: ' . ($limit > 0 ? "{$limit} anexos" : 'sem limite')
-            . ' / ' . ($maxMb > 0 ? "{$maxMb} MB" : 'sem limite de volume')
-            . ' / ' . "{$maxFileMb} MB por arquivo");
+        $this->info($this->trans('common.line_limits', [
+            'limits' => $this->trans($limit > 0 ? 'attachments.limit_files' : 'attachments.limit_files_none', ['count' => $limit])
+                . ' / ' . $this->trans($maxMb > 0 ? 'common.limit_volume' : 'common.limit_volume_none', ['count' => $maxMb])
+                . ' / ' . $this->trans('common.limit_per_file', ['count' => $maxFileMb]),
+        ]));
         if ($uploadsDir === '') {
-            $this->info('Rede   : ' . $this->describeFetch($this->settings, $timeout));
+            $this->info($this->trans('common.line_network', ['summary' => $this->describeFetch($this->settings, $timeout)]));
         }
-        $this->info('Otimiza: ' . $optimizer->describe() . ' (só vale para anexos de imagem)');
+        $this->info($this->trans('common.line_optimize', [
+            'summary' => $this->describeOptimizer($optimizer) . ' ' . $this->trans('attachments.optimize_images_only'),
+        ]));
 
         if (! $this->store->uploadTableAvailable()) {
-            $this->info('⚠ fof/upload não está instalado: os anexos serão gravados e linkados no post, '
-                . 'mas não aparecerão no gerenciador de mídia.');
+            $this->info($this->trans('attachments.no_upload_table'));
         }
         if ($dryRun) {
-            $this->info('*** DRY-RUN — nada será baixado nem gravado ***');
+            $this->info($this->trans('common.dry_run'));
         }
 
         $mybb = $this->buildMybbDatabase($this->settings);
@@ -240,7 +250,11 @@ class MigrateAttachmentsCommand extends AbstractCommand
 
             if ($dryRun) {
                 $this->copied++;
-                $this->info("  [dry-run] migraria aid={$aid} ({$row['filename']}) para o post {$pid}");
+                $this->info($this->trans('attachments.dry_migrate', [
+                    'aid'  => $aid,
+                    'file' => $row['filename'],
+                    'post' => $pid,
+                ]));
                 continue;
             }
 
@@ -249,7 +263,11 @@ class MigrateAttachmentsCommand extends AbstractCommand
 
             if ($bytes === null) {
                 $transient ? $this->deferred++ : $this->failed++;
-                $this->info(($transient ? "⏳ adiado aid={$aid}" : "⚠ falhou aid={$aid}") . " ({$row['filename']}) — {$error}");
+                $this->info($this->trans($transient ? 'attachments.deferred' : 'attachments.failed', [
+                    'aid'   => $aid,
+                    'file'  => $row['filename'],
+                    'error' => $error ?? $this->trans('common.unknown_error'),
+                ]));
                 $this->remember($key, [
                     'status'    => $transient ? 'deferred' : 'failed',
                     'error'     => $error,
@@ -271,7 +289,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
                 if ($opt['changed']) {
                     $this->optimized++;
                     $this->savedBytes += $opt['saved'];
-                    $this->info("  ↓ aid={$aid} " . $opt['note']);
+                    $this->info($this->trans('common.optimized', ['name' => 'aid=' . $aid, 'note' => $opt['note']]));
                     // O nome visível ao usuário acompanha o formato real: baixar
                     // um "foto.jpg" que é WebP por dentro confunde qualquer um.
                     $baseName = $this->renameExtension($baseName, $opt['ext']);
@@ -334,7 +352,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
         $this->steps->progress('attachments', $this->seen, $total);
 
         if (! $dryRun && ($moved = $this->visibility->flush()) > 0) {
-            $this->info("  {$moved} anexo(s) movido(s) para fora do diretorio publico pelo escopo de tags.");
+            $this->info($this->trans('attachments.moved_private', ['count' => $moved]));
         }
 
         $this->report($dryRun);
@@ -377,7 +395,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
         try {
             $text = (string) $this->formatter->unparse($xml);
         } catch (\Throwable $e) {
-            $this->error("  post {$post->id}: não foi possível desmontar o conteúdo ({$e->getMessage()}); anexo não inserido.");
+            $this->error($this->trans('attachments.unparse_failed', ['post' => $post->id, 'error' => $e->getMessage()]));
 
             return;
         }
@@ -391,7 +409,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
         try {
             $newXml = $this->formatter->parse($newText);
         } catch (\Throwable $e) {
-            $this->error("  post {$post->id}: formatter falhou ao remontar ({$e->getMessage()}); anexo não inserido.");
+            $this->error($this->trans('attachments.parse_failed', ['post' => $post->id, 'error' => $e->getMessage()]));
 
             return;
         }
@@ -537,7 +555,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
         try {
             $this->db->table('mybb_migrated_images')->updateOrInsert(['url_hash' => $hash], $row);
         } catch (\Throwable $e) {
-            $this->error('  não foi possível gravar o mapa para ' . $key . ': ' . $e->getMessage());
+            $this->error($this->trans('common.map_write_failed', ['key' => $key, 'error' => $e->getMessage()]));
         }
 
         $map[$hash] = [
@@ -568,7 +586,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
                 ];
             }
         } catch (\Throwable $e) {
-            $this->error('Tabela mybb_migrated_images ausente — rode `php flarum migrate`. Detalhe: ' . $e->getMessage());
+            $this->error($this->trans('common.map_missing', ['error' => $e->getMessage()]));
         }
 
         return $map;
@@ -583,34 +601,32 @@ class MigrateAttachmentsCommand extends AbstractCommand
 
     private function report(bool $dryRun): void
     {
-        $this->info($dryRun ? 'Dry-run concluído.' : 'Concluído.');
-        $this->info("  anexos no MyBB          : {$this->seen}");
-        $this->info("  arquivos migrados       : {$this->copied}");
-        $this->info("  gravados fora do publico: {$this->privateWrites}");
-        $this->info("  posts com anexo inserido: {$this->appended}");
-        $this->info("  ja migrados antes       : {$this->alreadyDone}");
-        $this->info("  post inexistente        : {$this->missingPost}");
-        $this->info('  MB transferidos         : ' . round($this->bytes / 1048576, 2));
-        $this->info("  imagens otimizadas      : {$this->optimized}");
-        $this->info('  MB poupados na otimizac.: ' . round($this->savedBytes / 1048576, 2));
-        $this->info("  falhas                  : {$this->failed}");
-        $this->info("  adiados (429/timeout)   : {$this->deferred}");
+        $this->info($this->trans($dryRun ? 'common.dry_run_done' : 'common.done'));
+        $this->stat('attachments.stats.seen', $this->seen);
+        $this->stat('attachments.stats.copied', $this->copied);
+        $this->stat('attachments.stats.private', $this->privateWrites);
+        $this->stat('attachments.stats.appended', $this->appended);
+        $this->stat('attachments.stats.already', $this->alreadyDone);
+        $this->stat('attachments.stats.missing_post', $this->missingPost);
+        $this->stat('attachments.stats.mb', round($this->bytes / 1048576, 2));
+        $this->stat('common.stats.optimized', $this->optimized);
+        $this->stat('common.stats.saved', round($this->savedBytes / 1048576, 2));
+        $this->stat('common.stats.failed', $this->failed);
+        $this->stat('common.stats.deferred', $this->deferred);
 
         if ($this->budgetHit) {
-            $this->info('⚠ Limite do run atingido — rode de novo (com um limite maior) para continuar.');
+            $this->info($this->trans('attachments.budget_hit'));
         }
 
         if ($this->failed > 0) {
             // A falha típica é ambiental (o MyBB exige login para baixar), não
             // permanente — mas a linha fica marcada como `failed`. Dizer como
             // destravar evita a impressão de que o anexo é irrecuperável.
-            $this->info('⚠ Falhas ficam registradas e não são retentadas sozinhas. Depois de corrigir a origem '
-                . '(--uploads-dir apontando para a pasta uploads do MyBB é o caminho confiável), rode de novo com --retry-failed.');
+            $this->info($this->trans('attachments.failed_hint'));
         }
 
         if ($this->deferred > 0) {
-            $this->info("⏳ {$this->deferred} anexo(s) adiados por limite de requisições ou lentidão do site antigo — "
-                . 'basta rodar o passo de novo, sem --retry-failed, que eles voltam a ser tentados.');
+            $this->info($this->trans('attachments.deferred_hint', ['count' => $this->deferred]));
         }
     }
 }

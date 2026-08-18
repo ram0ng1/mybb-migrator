@@ -71,6 +71,21 @@ export default class ConnectionCard extends Component<Attrs> {
           <div className="MmHint">{trans("connection.old_site_hint")}</div>
         </div>
 
+        <div className="MmField MmField--wide">
+          <label>{trans("connection.cli_locale")}</label>
+          <input
+            className="FormControl"
+            type="text"
+            placeholder="pt-BR"
+            title={trans("connection.cli_locale")}
+            value={this.form.cli_locale ?? ""}
+            oninput={(e: InputEvent) =>
+              (this.form.cli_locale = (e.target as HTMLInputElement).value)
+            }
+          />
+          <div className="MmHint">{trans("connection.cli_locale_hint")}</div>
+        </div>
+
         <div className="MmActions">
           <Button
             className="Button"
@@ -106,6 +121,7 @@ export default class ConnectionCard extends Component<Attrs> {
       prefix: conn.prefix,
       php_binary: conn.php_binary,
       old_site_url: conn.old_site_url,
+      cli_locale: conn.cli_locale,
     };
     this.seeded = true;
   }

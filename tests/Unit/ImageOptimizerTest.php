@@ -129,7 +129,7 @@ class ImageOptimizerTest extends TestCase
         $this->assertFalse($result['changed']);
         $this->assertSame($original, $result['bytes']);
         $this->assertSame('jpg', $result['ext']);
-        $this->assertSame('desligada', (new ImageOptimizer(false))->describe());
+        $this->assertFalse((new ImageOptimizer(false))->enabled());
     }
 
     public function test_without_webp_the_source_format_is_kept(): void

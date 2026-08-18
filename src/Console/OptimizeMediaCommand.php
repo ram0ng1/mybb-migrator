@@ -4,6 +4,7 @@ namespace Ramon\MybbMigrator\Console;
 
 use Flarum\Console\AbstractCommand;
 use Flarum\Foundation\Paths;
+use Flarum\Locale\LocaleManager;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Database\ConnectionInterface;
 use Ramon\MybbMigrator\Gui\StepStore;
@@ -36,6 +37,7 @@ use Symfony\Component\Console\Input\InputOption;
 class OptimizeMediaCommand extends AbstractCommand
 {
     use MediaFetchOptions;
+    use TranslatesOutput;
 
     private int $seen = 0;
     private int $optimized = 0;
@@ -53,6 +55,7 @@ class OptimizeMediaCommand extends AbstractCommand
         protected ImageStore $store,
         protected Paths $paths,
         protected StepStore $steps,
+        protected LocaleManager $locales,
     ) {
         parent::__construct();
     }
@@ -72,12 +75,15 @@ class OptimizeMediaCommand extends AbstractCommand
         // mesmos padrões da aba "Imagens" — o resultado aqui e na importação é
         // exatamente o mesmo arquivo.
         $this->addMediaFetchOptions(network: false);
+        $this->addLocaleOption();
     }
 
     protected function fire(): int
     {
+        $this->applyLocale();
+
         if (! $this->input->getOption('force')) {
-            $this->error('Run with --force.');
+            $this->error($this->trans('common.force_required'));
 
             return 1;
         }
@@ -90,16 +96,18 @@ class OptimizeMediaCommand extends AbstractCommand
         $optimizer = $this->buildOptimizer($this->settings);
 
         if (! $optimizer->available()) {
-            $this->error('Otimização indisponível: este PHP não tem GD (ou --no-optimize foi passado). Nada a fazer.');
+            $this->error($this->trans('optimize.unavailable'));
 
             return 1;
         }
 
-        $this->info('Otimiza: ' . $optimizer->describe());
-        $this->info('Escopo : ' . ($kind === 'all' ? 'imagens e anexos' : $kind)
-            . ($limit > 0 ? " (máx {$limit} arquivos)" : ''));
+        $this->info($this->trans('common.line_optimize', ['summary' => $this->describeOptimizer($optimizer)]));
+        $this->info($this->trans('common.line_scope', [
+            'scope' => $this->trans('optimize.kind_' . ($kind === 'image' || $kind === 'attachment' ? $kind : 'all'))
+                . ($limit > 0 ? ' ' . $this->trans('optimize.scope_limit', ['count' => $limit]) : ''),
+        ]));
         if ($dryRun) {
-            $this->info('*** DRY-RUN — nada será gravado, reapontado nem apagado ***');
+            $this->info($this->trans('optimize.dry_run'));
         }
 
         $query = $this->db->table('mybb_migrated_images')
@@ -112,7 +120,7 @@ class OptimizeMediaCommand extends AbstractCommand
         }
 
         $total = (clone $query)->count();
-        $this->info("Arquivos no mapa: {$total}");
+        $this->info($this->trans('optimize.total', ['count' => $total]));
         $this->steps->progress('optimize-media', 0, $total);
 
         foreach ($query->orderBy('id')->cursor() as $row) {
@@ -124,7 +132,12 @@ class OptimizeMediaCommand extends AbstractCommand
             $this->handle($row, $optimizer, $dryRun, $keepOld);
 
             if ($this->seen % 20 === 0) {
-                $this->steps->progress('optimize-media', $this->seen, $total, "{$this->optimized} otimizados");
+                $this->steps->progress(
+                    'optimize-media',
+                    $this->seen,
+                    $total,
+                    $this->trans('optimize.progress', ['count' => $this->optimized])
+                );
             }
         }
 
@@ -164,7 +177,7 @@ class OptimizeMediaCommand extends AbstractCommand
         $this->before += strlen($bytes);
         $this->after += strlen($result['bytes']);
         $this->optimized++;
-        $this->info("  ↓ {$name} " . $result['note']);
+        $this->info($this->trans('common.optimized', ['name' => $name, 'note' => $result['note']]));
 
         if ($dryRun) {
             if ($newName !== $name) {
@@ -212,7 +225,7 @@ class OptimizeMediaCommand extends AbstractCommand
             }
         } catch (\Throwable $e) {
             $this->failed++;
-            $this->error("  falha ao otimizar {$name}: " . $e->getMessage());
+            $this->error($this->trans('optimize.failed', ['name' => $name, 'error' => $e->getMessage()]));
         }
     }
 
@@ -268,21 +281,20 @@ class OptimizeMediaCommand extends AbstractCommand
         $saved = max(0, $this->before - $this->after);
         $pct = $this->before > 0 ? round(100 * $saved / $this->before) : 0;
 
-        $this->info($dryRun ? 'Dry-run concluído.' : 'Concluído.');
-        $this->info("  arquivos analisados     : {$this->seen}");
-        $this->info("  otimizados              : {$this->optimized}");
-        $this->info("  renomeados (novo formato): {$this->renamed}");
-        $this->info("  posts atualizados       : {$this->postsUpdated}");
-        $this->info("  sem ganho / não aplicável: {$this->skipped}");
-        $this->info("  ausentes no disco       : {$this->missing}");
-        $this->info("  falhas                  : {$this->failed}");
-        $this->info('  MB antes                : ' . round($this->before / 1048576, 2));
-        $this->info('  MB depois               : ' . round($this->after / 1048576, 2));
-        $this->info("  economia                : " . round($saved / 1048576, 2) . " MB ({$pct}%)");
+        $this->info($this->trans($dryRun ? 'common.dry_run_done' : 'common.done'));
+        $this->stat('optimize.stats.seen', $this->seen);
+        $this->stat('optimize.stats.optimized', $this->optimized);
+        $this->stat('optimize.stats.renamed', $this->renamed);
+        $this->stat('optimize.stats.posts', $this->postsUpdated);
+        $this->stat('optimize.stats.skipped', $this->skipped);
+        $this->stat('optimize.stats.missing', $this->missing);
+        $this->stat('optimize.stats.failed', $this->failed);
+        $this->stat('optimize.stats.before', round($this->before / 1048576, 2));
+        $this->stat('optimize.stats.after', round($this->after / 1048576, 2));
+        $this->stat('optimize.stats.saved', round($saved / 1048576, 2) . " MB ({$pct}%)");
 
         if ($this->missing > 0) {
-            $this->info('⚠ Arquivos ausentes no disco continuam marcados como `ok` no mapa: '
-                . 'são linhas cujo arquivo foi apagado por fora. Nada foi alterado neles.');
+            $this->info($this->trans('optimize.missing_hint'));
         }
     }
 }

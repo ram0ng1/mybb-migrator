@@ -4,6 +4,7 @@ namespace Ramon\MybbMigrator\Console;
 
 use Flarum\Console\AbstractCommand;
 use Flarum\Foundation\Paths;
+use Flarum\Locale\LocaleManager;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Database\ConnectionInterface;
 use Ramon\MybbMigrator\Gui\MediaDetector;
@@ -46,6 +47,7 @@ use Symfony\Component\Console\Input\InputOption;
 class MigrateImagesCommand extends AbstractCommand
 {
     use MediaFetchOptions;
+    use TranslatesOutput;
 
     /** Contadores exibidos no resumo (o painel lê "rótulo: número"). */
     private int $scanned = 0;
@@ -78,6 +80,7 @@ class MigrateImagesCommand extends AbstractCommand
         protected MediaDetector $detector,
         protected UploadVisibilityBridge $visibility,
         protected PrivateUploadBridge $private,
+        protected LocaleManager $locales,
     ) {
         parent::__construct();
     }
@@ -101,12 +104,15 @@ class MigrateImagesCommand extends AbstractCommand
             ->addOption('relink-only', null, InputOption::VALUE_NONE, 'No network: only re-apply URLs already downloaded.')
             ->addOption('timeout', null, InputOption::VALUE_REQUIRED, 'Idle timeout per request, in seconds: a download that keeps progressing is no longer killed.');
         $this->addMediaFetchOptions();
+        $this->addLocaleOption();
     }
 
     protected function fire(): int
     {
+        $this->applyLocale();
+
         if (! $this->input->getOption('force')) {
-            $this->error('Run with --force.');
+            $this->error($this->trans('common.force_required'));
 
             return 1;
         }
@@ -119,8 +125,7 @@ class MigrateImagesCommand extends AbstractCommand
         $discussionId = $this->resolveDiscussion($rawDiscussion);
 
         if ($rawDiscussion !== '' && $discussionId === null) {
-            $this->error("Não consegui extrair o id da discussão de \"{$rawDiscussion}\". "
-                . 'Cole a URL inteira (.../d/1661-titulo) ou informe só o número.');
+            $this->error($this->trans('images.discussion_unresolved', ['value' => $rawDiscussion]));
 
             return 1;
         }
@@ -145,33 +150,30 @@ class MigrateImagesCommand extends AbstractCommand
         // Nada configurado? Em vez de exigir que o admin adivinhe, descobrimos:
         // os hosts saem dos próprios posts migrados, rankeados por uso.
         if ($hosts === [] && ! $allHosts && ! $relinkOnly) {
-            $this->info('Nenhum host configurado — detectando a partir dos posts migrados...');
+            $this->info($this->trans('images.detecting_hosts'));
             $detected = $this->detector->detectHosts();
 
             $hosts = $detected['applied'];
             if ($hosts === []) {
-                $this->error('Nenhuma imagem externa encontrada nos posts varridos. '
-                    . 'Nada a internalizar (ou o conteúdo ainda não foi migrado).');
+                $this->error($this->trans('images.no_external_images'));
 
                 return 1;
             }
 
             $this->settings->set('mybb-migrator.image_hosts', implode(',', $hosts));
-            $this->info(sprintf(
-                '  %d host(s) aplicados, %s imagens em %d posts varridos%s.',
-                count($hosts),
-                number_format((int) ($detected['total_images'] ?? 0), 0, ',', '.'),
-                $detected['scanned'],
-                $detected['truncated'] ? ' (amostra)' : ''
-            ));
+            $this->info($this->trans('images.hosts_applied', [
+                'hosts'   => count($hosts),
+                'images'  => number_format((int) ($detected['total_images'] ?? 0), 0, ',', '.'),
+                'scanned' => $detected['scanned'],
+                'sample'  => $detected['truncated'] ? ' ' . $this->trans('images.sample_suffix') : '',
+            ]));
 
             foreach (array_slice($detected['ranking'], 0, 10) as $entry) {
                 $this->info("    {$entry['host']}: {$entry['count']}");
             }
 
             if ($detected['total_hosts'] > 10) {
-                $this->info('    ... e mais ' . ($detected['total_hosts'] - 10)
-                    . ' host(s), todos incluídos. A lista completa está na aba "Imagens".');
+                $this->info($this->trans('images.hosts_more', ['count' => $detected['total_hosts'] - 10]));
             }
         }
 
@@ -179,31 +181,35 @@ class MigrateImagesCommand extends AbstractCommand
         $optimizer = $this->buildOptimizer($this->settings);
         $budgetBytes = $maxMb > 0 ? $maxMb * 1048576 : 0;
 
-        $this->info('Destino: ' . $this->store->directoryHint($this->paths->public));
+        $this->info($this->trans('common.line_destination', [
+            'path' => $this->store->directoryHint($this->paths->public),
+        ]));
         if ($this->private->available()) {
-            $this->info('  restrito: ' . $this->private->directoryHint()
-                . '  (imagens de discussão invisível ao visitante nascem AQUI, nunca no público)');
+            $this->info($this->trans('images.restricted', ['path' => $this->private->directoryHint()]));
         }
-        $this->info('Hosts  : ' . ($allHosts ? '(todos os externos)' : implode(', ', $hosts)));
-        $this->info('Limites: ' . ($limit > 0 ? "{$limit} downloads" : 'sem limite de downloads')
-            . ' / ' . ($maxMb > 0 ? "{$maxMb} MB" : 'sem limite de volume')
-            . ' / ' . "{$maxFileMb} MB por arquivo");
-        $this->info('Rede   : ' . $this->describeFetch($this->settings, $timeout));
-        $this->info('Otimiza: ' . $optimizer->describe());
+        $this->info($this->trans('images.line_hosts', [
+            'hosts' => $allHosts ? $this->trans('images.hosts_all') : implode(', ', $hosts),
+        ]));
+        $this->info($this->trans('common.line_limits', [
+            'limits' => $this->trans($limit > 0 ? 'images.limit_downloads' : 'images.limit_downloads_none', ['count' => $limit])
+                . ' / ' . $this->trans($maxMb > 0 ? 'common.limit_volume' : 'common.limit_volume_none', ['count' => $maxMb])
+                . ' / ' . $this->trans('common.limit_per_file', ['count' => $maxFileMb]),
+        ]));
+        $this->info($this->trans('common.line_network', ['summary' => $this->describeFetch($this->settings, $timeout)]));
+        $this->info($this->trans('common.line_optimize', ['summary' => $this->describeOptimizer($optimizer)]));
 
         if (! $this->store->uploadTableAvailable()) {
-            $this->info('⚠ fof/upload não está instalado: os arquivos serão gravados e apontados normalmente, '
-                . 'mas não aparecerão no gerenciador de mídia. Instale e habilite fof/upload e rode de novo para registrá-los.');
+            $this->info($this->trans('images.no_upload_table'));
         }
         if ($dryRun) {
-            $this->info('*** DRY-RUN — nada será baixado nem gravado ***');
+            $this->info($this->trans('common.dry_run'));
         }
         if ($relinkOnly) {
-            $this->info('*** RELINK-ONLY — sem acesso à rede ***');
+            $this->info($this->trans('images.relink_only'));
         }
 
         $map = $this->loadMap();
-        $this->info('URLs já conhecidas no mapa: ' . count($map));
+        $this->info($this->trans('images.map_known', ['count' => count($map)]));
 
         $query = $this->db->table('posts')
             ->select('id', 'user_id', 'discussion_id', 'content')
@@ -225,7 +231,9 @@ class MigrateImagesCommand extends AbstractCommand
         // indeterminada em vez de porcentagem inventada.
         $total = $discussionId !== null ? (clone $query)->count() : null;
         if ($discussionId !== null) {
-            $this->info("Escopo : discussão {$discussionId} ({$total} posts com imagem)");
+            $this->info($this->trans('common.line_scope', [
+                'scope' => $this->trans('images.scope_discussion', ['id' => $discussionId, 'count' => $total]),
+            ]));
         }
         $this->publishProgress(0, $total);
 
@@ -339,7 +347,10 @@ class MigrateImagesCommand extends AbstractCommand
                 }
 
                 if ($this->scanned % 500 === 0) {
-                    $this->info("  {$this->scanned} posts varridos, {$this->downloaded} imagens baixadas...");
+                    $this->info($this->trans('images.progress', [
+                        'scanned'    => $this->scanned,
+                        'downloaded' => $this->downloaded,
+                    ]));
                 }
 
                 if ($maxPosts > 0 && $this->scanned >= $maxPosts) {
@@ -358,7 +369,7 @@ class MigrateImagesCommand extends AbstractCommand
         // avulso significa que, entre o fim da importação e alguém lembrar de
         // rodá-lo, toda imagem de tag restrita fica com uma URL pública válida.
         if (! $dryRun && ($moved = $this->visibility->flush()) > 0) {
-            $this->info("  {$moved} arquivo(s) movido(s) para fora do diretório público pelo escopo de tags.");
+            $this->info($this->trans('images.moved_private', ['count' => $moved]));
         }
 
         $this->report($dryRun);
@@ -445,7 +456,7 @@ class MigrateImagesCommand extends AbstractCommand
     ): ?string {
         if ($dryRun) {
             $this->downloaded++;
-            $this->info("  [dry-run] baixaria {$url}");
+            $this->info($this->trans('images.dry_download', ['url' => $url]));
 
             return null;
         }
@@ -458,7 +469,10 @@ class MigrateImagesCommand extends AbstractCommand
             $transient = (bool) ($res['transient'] ?? false);
             $transient ? $this->deferred++ : $this->failed++;
 
-            $this->info(($transient ? '⏳ adiada ' : '⚠ falhou ') . $url . ' — ' . ($res['error'] ?? 'erro desconhecido'));
+            $this->info($this->trans($transient ? 'images.deferred' : 'images.failed', [
+                'url'   => $url,
+                'error' => $res['error'] ?? $this->trans('common.unknown_error'),
+            ]));
             $this->remember($url, [
                 'status'    => $transient ? 'deferred' : 'failed',
                 'error'     => $res['error'],
@@ -476,7 +490,7 @@ class MigrateImagesCommand extends AbstractCommand
         if ($opt['changed']) {
             $this->optimized++;
             $this->savedBytes += $opt['saved'];
-            $this->info('  ↓ ' . $opt['note']);
+            $this->info($this->trans('common.optimized_url', ['note' => $opt['note']]));
         }
 
         $bytes = $opt['bytes'];
@@ -555,7 +569,7 @@ class MigrateImagesCommand extends AbstractCommand
         try {
             $this->db->table('mybb_migrated_images')->updateOrInsert(['url_hash' => $hash], $row);
         } catch (\Throwable $e) {
-            $this->error('  não foi possível gravar o mapa para ' . $url . ': ' . $e->getMessage());
+            $this->error($this->trans('common.map_write_failed', ['key' => $url, 'error' => $e->getMessage()]));
         }
 
         $map[$hash] = [
@@ -581,7 +595,7 @@ class MigrateImagesCommand extends AbstractCommand
                 ];
             }
         } catch (\Throwable $e) {
-            $this->error('Tabela mybb_migrated_images ausente — rode `php flarum migrate`. Detalhe: ' . $e->getMessage());
+            $this->error($this->trans('common.map_missing', ['error' => $e->getMessage()]));
         }
 
         return $map;
@@ -711,36 +725,32 @@ class MigrateImagesCommand extends AbstractCommand
 
     private function report(bool $dryRun): void
     {
-        $this->info($dryRun ? 'Dry-run concluído.' : 'Concluído.');
-        $this->info("  posts varridos          : {$this->scanned}");
-        $this->info("  imagens candidatas      : {$this->found}");
-        $this->info("  imagens baixadas        : {$this->downloaded}");
-        $this->info("  gravadas fora do publico: {$this->privateWrites}");
-        $this->info("  imagens reapontadas     : {$this->relinked}");
-        $this->info("  posts atualizados       : {$this->postsUpdated}");
-        $this->info('  MB baixados             : ' . round($this->bytes / 1048576, 2));
-        $this->info("  imagens otimizadas      : {$this->optimized}");
-        $this->info('  MB poupados na otimizac.: ' . round($this->savedBytes / 1048576, 2));
-        $this->info("  puladas (host de fora)  : {$this->skippedHost}");
-        $this->info("  puladas (ja locais)     : {$this->skippedLocal}");
-        $this->info("  puladas (falha anterior): {$this->skippedFailed}");
-        $this->info("  falhas                  : {$this->failed}");
-        $this->info("  adiadas (429/timeout)   : {$this->deferred}");
+        $this->info($this->trans($dryRun ? 'common.dry_run_done' : 'common.done'));
+        $this->stat('images.stats.scanned', $this->scanned);
+        $this->stat('images.stats.candidates', $this->found);
+        $this->stat('images.stats.downloaded', $this->downloaded);
+        $this->stat('images.stats.private', $this->privateWrites);
+        $this->stat('images.stats.relinked', $this->relinked);
+        $this->stat('images.stats.posts', $this->postsUpdated);
+        $this->stat('images.stats.mb', round($this->bytes / 1048576, 2));
+        $this->stat('common.stats.optimized', $this->optimized);
+        $this->stat('common.stats.saved', round($this->savedBytes / 1048576, 2));
+        $this->stat('images.stats.skipped_host', $this->skippedHost);
+        $this->stat('images.stats.skipped_local', $this->skippedLocal);
+        $this->stat('images.stats.skipped_failed', $this->skippedFailed);
+        $this->stat('common.stats.failed', $this->failed);
+        $this->stat('common.stats.deferred', $this->deferred);
 
         if ($this->budgetHit) {
-            $this->info('⚠ Limite do run atingido — a varredura parou antes do fim. '
-                . 'Rode de novo (com um limite maior) para continuar de onde parou; nada já baixado é rebaixado.');
+            $this->info($this->trans('images.budget_hit'));
         }
 
         if ($this->failed > 0) {
-            $this->info('⚠ URLs que falharam ficam registradas e não são retentadas sozinhas '
-                . '(a maioria é imagem realmente apagada na origem). Use --retry-failed para tentar de novo.');
+            $this->info($this->trans('images.failed_hint'));
         }
 
         if ($this->deferred > 0) {
-            $this->info("⏳ {$this->deferred} URL(s) adiadas por limite de requisições (429) ou lentidão do host — "
-                . 'NÃO são imagens perdidas. Rode o passo de novo, sem --retry-failed, que elas voltam a ser '
-                . 'tentadas; se o host insistir no 429, aumente --host-delay.');
+            $this->info($this->trans('images.deferred_hint', ['count' => $this->deferred]));
         }
     }
 }

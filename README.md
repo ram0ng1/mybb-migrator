@@ -330,6 +330,7 @@ php flarum mybb:optimize-media --force --limit=50
 | `--max-dim=N` | Resize anything whose longest side exceeds N pixels (default 1600; `0` keeps the original size). |
 | `--no-webp` | Optimize without converting to WebP — keeps the source format. |
 | `--no-optimize` | Store the bytes exactly as downloaded: no re-encoding, no resizing. |
+| `--locale=xx` | Language of this run's output (e.g. `pt-BR`). Defaults to the panel setting, then to the forum's `default_locale`. |
 
 What makes re-running safe:
 
@@ -400,6 +401,18 @@ The file name carries the real format (`mybb-<hash>.webp`), and attachments keep
 their original name with the new extension (`holiday.jpg` → `holiday.webp`), so
 a download never lies about what is inside. Non-image attachments (zip, pdf) are
 copied byte for byte.
+
+#### Console language
+
+The output of these steps is what the admin panel's console shows, so it is
+translated like the rest of the extension — `locale/en.yml` and
+`locale/pt-BR.yml`, under `ramon-mybb-migrator.cli`. The language is picked, in
+order, from `--locale=xx`, the **Console output language** field on the
+Connection tab (`mybb-migrator.cli_locale`), and the forum's `default_locale`.
+
+If a run ever prints raw keys (`ramon-mybb-migrator.cli.…`) instead of text, the
+compiled catalogue under `storage/locale` is stale — delete it (or run
+`php flarum cache:clear`) and the next run rebuilds it.
 
 #### Optimizing what is already localized
 

@@ -37,6 +37,12 @@ ramon-mybb-migrator:
       php_none: Could not determine Flarum's PHP — set the path manually.
       old_site_url: Old site URL (for the Compare tab)
       old_site_hint: Base URL of the live MyBB forum, e.g. https://example.com — used to link/preview the original post.
+      cli_locale: Console output language (optional)
+      cli_locale_hint: >-
+        Language for the migration steps' output shown in the console below.
+        Empty follows the forum's default language — fill this in only to log in
+        a different one (any installed locale, e.g. pt-BR). A single run can
+        override it with --locale=xx.
       fields:
         host: Host
         port: Port
@@ -242,3 +248,128 @@ ramon-mybb-migrator:
         attachments: Migrates MyBB post attachments into local storage and appends them to the migrated posts.
         optimize-media: Re-encodes files already localized (WebP + resize), repoints the posts and the media manager at the new file, then deletes the old one. For anything migrated before optimization existed.
         legacy-passwords: Backfill mybb_legacy_passwords for existing users (carry MyBB passwords to an already-migrated Flarum). Skips users that already have a row.
+
+  # Saída dos comandos `mybb:*` — é ela que aparece no console do painel.
+  cli:
+    common:
+      force_required: "Run with --force."
+      done: Done.
+      dry_run_done: Dry-run finished.
+      dry_run: "*** DRY-RUN — nothing will be downloaded or written ***"
+      unknown_error: unknown error
+      map_missing: "Table mybb_migrated_images is missing — run `php flarum migrate`. Detail: {error}"
+      map_write_failed: "  could not record the map for {key}: {error}"
+      line_destination: "Target  : {path}"
+      line_limits: "Limits  : {limits}"
+      line_network: "Network : {summary}"
+      line_optimize: "Optimize: {summary}"
+      line_scope: "Scope   : {scope}"
+      limit_volume: "{count} MB"
+      limit_volume_none: no volume cap
+      limit_per_file: "{count} MB per file"
+      network_summary: "{retries} retry(ies) on transient failure, {delay} ms between requests to the same host, {timeout}s idle before giving up"
+      optimizer_disabled: "off"
+      optimizer_unavailable: "unavailable (no GD) — files are stored exactly as downloaded"
+      optimizer_summary: "{format}, quality {quality}, max {size}, minimum gain {gain}%"
+      optimizer_format_webp: webp
+      optimizer_format_source: source format
+      optimizer_format_source_no_webp: "source format (this GD has no webp support)"
+      optimizer_max_pixels: "{pixels} px"
+      optimizer_no_resize: no resizing
+      optimized: "  ↓ {name} {note}"
+      optimized_url: "  ↓ {note}"
+      stats:
+        optimized: images optimized
+        saved: MB saved by optimizing
+        failed: failures
+        deferred: deferred (429/timeout)
+
+    images:
+      discussion_unresolved: "Could not read a discussion id from \"{value}\". Paste the whole URL (.../d/1661-title) or just the number."
+      detecting_hosts: "No host configured — detecting them from the migrated posts…"
+      no_external_images: "No external image found in the posts scanned. Nothing to localize (or the content has not been migrated yet)."
+      hosts_applied: "  {hosts} host(s) applied, {images} images across {scanned} posts scanned{sample}."
+      sample_suffix: (sample)
+      hosts_more: "    … and {count} more host(s), all included. The full list is on the \"Images\" tab."
+      restricted: "  restricted: {path}  (images from discussions invisible to guests are born HERE, never in public)"
+      line_hosts: "Hosts   : {hosts}"
+      hosts_all: (every external host)
+      limit_downloads: "{count} downloads"
+      limit_downloads_none: no download cap
+      no_upload_table: "⚠ fof/upload is not installed: files are still written and the posts do point at them, they just won't show up in the media manager. Install and enable fof/upload, then run again to register them."
+      relink_only: "*** RELINK-ONLY — no network access ***"
+      map_known: "URLs already in the map: {count}"
+      scope_discussion: "discussion {id} ({count} posts with images)"
+      progress: "  {scanned} posts scanned, {downloaded} images downloaded…"
+      moved_private: "  {count} file(s) moved out of the public directory by tag scope."
+      dry_download: "  [dry-run] would download {url}"
+      deferred: "⏳ deferred {url} — {error}"
+      failed: "⚠ failed {url} — {error}"
+      budget_hit: "⚠ Run budget reached — the scan stopped early. Run it again (with a higher cap) to carry on from here; nothing already downloaded is downloaded twice."
+      failed_hint: "⚠ URLs that failed are recorded and not retried on their own (most are images really deleted at the source). Use --retry-failed to try them again."
+      deferred_hint: "⏳ {count} URL(s) deferred by rate limiting (429) or a slow host — these are NOT lost images. Run the step again, without --retry-failed, and they will be tried again; if the host keeps answering 429, raise --host-delay."
+      stats:
+        scanned: posts scanned
+        candidates: candidate images
+        downloaded: images downloaded
+        private: written outside public
+        relinked: images repointed
+        posts: posts updated
+        mb: MB downloaded
+        skipped_host: skipped (other host)
+        skipped_local: skipped (already local)
+        skipped_failed: skipped (failed before)
+
+    attachments:
+      uploads_detected: "MyBB uploads folder detected: {path}"
+      uploads_not_found: "Could not find the MyBB uploads folder. Directories tried: {paths}"
+      uploads_missing: "Uploads folder not found: {path}"
+      no_source: "No source for the attachments: set the MyBB uploads folder on the \"Images\" tab (or --uploads-dir=…), or fill in the old site URL on the Connection tab."
+      line_source: "Source  : {source}"
+      source_local: "local folder {path}"
+      source_download: "download from {url}"
+      restricted: "  restricted: {path}  (attachments from discussions invisible to guests are born HERE)"
+      limit_files: "{count} attachments"
+      limit_files_none: no cap
+      optimize_images_only: (image attachments only)
+      no_upload_table: "⚠ fof/upload is not installed: attachments are still stored and linked in the post, they just won't show up in the media manager."
+      dry_migrate: "  [dry-run] would migrate aid={aid} ({file}) into post {post}"
+      deferred: "⏳ deferred aid={aid} ({file}) — {error}"
+      failed: "⚠ failed aid={aid} ({file}) — {error}"
+      moved_private: "  {count} attachment(s) moved out of the public directory by tag scope."
+      unparse_failed: "  post {post}: could not take the content apart ({error}); attachment not inserted."
+      parse_failed: "  post {post}: the formatter failed to put it back together ({error}); attachment not inserted."
+      budget_hit: "⚠ Run budget reached — run it again (with a higher cap) to carry on."
+      failed_hint: "⚠ Failures are recorded and not retried on their own. Once the source is fixed (--uploads-dir pointing at MyBB's uploads folder is the reliable path), run again with --retry-failed."
+      deferred_hint: "⏳ {count} attachment(s) deferred by rate limiting or a slow old site — just run the step again, without --retry-failed, and they will be tried again."
+      stats:
+        seen: attachments in MyBB
+        copied: files migrated
+        private: written outside public
+        appended: posts with attachment
+        already: migrated before
+        missing_post: post does not exist
+        mb: MB transferred
+
+    optimize:
+      unavailable: "Optimization unavailable: this PHP has no GD (or --no-optimize was passed). Nothing to do."
+      kind_all: images and attachments
+      kind_image: images
+      kind_attachment: attachments
+      scope_limit: "(max {count} files)"
+      dry_run: "*** DRY-RUN — nothing will be written, repointed or deleted ***"
+      total: "Files in the map: {count}"
+      progress: "{count} optimized"
+      failed: "  could not optimize {name}: {error}"
+      missing_hint: "⚠ Files missing from disk stay marked `ok` in the map: those rows had their file removed from outside. Nothing was changed in them."
+      stats:
+        seen: files examined
+        optimized: optimized
+        renamed: renamed (new format)
+        posts: posts updated
+        skipped: no gain / not applicable
+        missing: missing on disk
+        failed: failures
+        before: MB before
+        after: MB after
+        saved: saved
