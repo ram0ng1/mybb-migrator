@@ -102,6 +102,115 @@ final class ImageStore
         }
     }
 
+    /**
+     * Bytes de um arquivo já gravado, venha ele do disco público ou do
+     * armazenamento privado — quem lê não precisa saber de que lado ele está.
+     */
+    public function read(string $name): ?string
+    {
+        $private = $this->private->privatePath($name);
+        if (is_file($private)) {
+            $bytes = @file_get_contents($private);
+
+            return $bytes === false ? null : $bytes;
+        }
+
+        try {
+            return $this->disk()->exists(self::DIR . '/' . $name)
+                ? (string) $this->disk()->get(self::DIR . '/' . $name)
+                : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /** O arquivo mora fora do document root? */
+    public function storedPrivately(string $name): bool
+    {
+        return is_file($this->private->privatePath($name));
+    }
+
+    /**
+     * Apaga o arquivo dos DOIS lados. Usado quando um re-encode troca a
+     * extensão: o arquivo velho vira lixo no mesmo instante em que o novo passa
+     * a ser referenciado.
+     */
+    public function delete(string $name): void
+    {
+        $private = $this->private->privatePath($name);
+        if (is_file($private)) {
+            @unlink($private);
+        }
+
+        try {
+            if ($this->disk()->exists(self::DIR . '/' . $name)) {
+                $this->disk()->delete(self::DIR . '/' . $name);
+            }
+        } catch (\Throwable $e) {
+            // arquivo órfão no disco é desperdício, não corrupção
+        }
+    }
+
+    /**
+     * Reaponta a linha de `fof_upload_files` para o arquivo re-encodado.
+     * INTROSPECTIVA como a inserção: grava só as colunas que existem nesta
+     * instalação (o esquema mudou várias vezes ao longo das versões).
+     *
+     * Devolve false quando não havia linha para adotar — o que é normal em
+     * instalação sem fof/upload.
+     */
+    public function repointUploadFile(
+        string $oldName,
+        string $newName,
+        string $url,
+        string $mime,
+        int $size,
+        ?string $baseName = null,
+        ?string $bytes = null,
+    ): bool {
+        $columns = $this->uploadColumns();
+        if ($columns === []) {
+            return false;
+        }
+
+        $candidate = [
+            'path'      => $newName,
+            'url'       => $url,
+            'type'      => $mime,
+            'size'      => $size,
+            'base_name' => $baseName,
+        ];
+
+        if ($baseName === null) {
+            unset($candidate['base_name']);
+        }
+
+        if ($bytes !== null) {
+            [$width, $height] = $this->dimensions($bytes);
+            $candidate['width'] = $width;
+            $candidate['height'] = $height;
+        }
+
+        $row = array_intersect_key($candidate, array_flip($columns));
+
+        try {
+            $affected = $this->db->table('fof_upload_files')->where('path', $oldName)->update($row);
+        } catch (\Throwable $e) {
+            $this->logger?->warning('[mybb-migrator] falha ao reapontar upload', [
+                'path' => $oldName,
+                'ex'   => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+
+        // O cache de ids é por nome de arquivo: sem invalidar, o nome antigo
+        // continuaria resolvendo para uma linha que não aponta mais para ele.
+        unset($this->idCache[$oldName], $this->idCache[$newName]);
+
+        return $affected > 0;
+    }
+
     public function urlFor(string $name): string
     {
         return $this->disk()->url(self::DIR . '/' . $name);

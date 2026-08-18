@@ -54,8 +54,12 @@ class StepCatalog
             // Ficam de fora de "Rodar tudo" DE PROPÓSITO: baixam arquivos da
             // internet e consomem disco, então são sempre uma decisão explícita,
             // com limite, depois de conferir o resultado numa amostra.
-            self::s('images',      'mybb:images',      'media', options: ['dry-run', 'discussion', 'limit', 'max-mb', 'max-file-mb', 'hosts', 'all-hosts', 'posts', 'retry-failed', 'relink-only'], manual: true),
-            self::s('attachments', 'mybb:attachments', 'media', options: ['dry-run', 'limit', 'max-mb', 'max-file-mb', 'uploads-dir', 'include-hidden', 'retry-failed'], manual: true),
+            self::s('images',      'mybb:images',      'media', options: ['dry-run', 'discussion', 'limit', 'max-mb', 'max-file-mb', 'hosts', 'all-hosts', 'posts', 'retry-failed', 'relink-only', 'no-optimize', 'no-webp', 'quality', 'max-dim', 'host-delay', 'retries'], manual: true),
+            self::s('attachments', 'mybb:attachments', 'media', options: ['dry-run', 'limit', 'max-mb', 'max-file-mb', 'uploads-dir', 'include-hidden', 'retry-failed', 'no-optimize', 'no-webp', 'quality', 'max-dim', 'host-delay', 'retries'], manual: true),
+            // Reencoda o que JÁ está no disco (quem migrou antes da otimização
+            // existir, ou rodou com --no-optimize). Troca o arquivo, a linha do
+            // fof/upload e a URL dentro dos posts, nessa ordem.
+            self::s('optimize-media', 'mybb:optimize-media', 'media', options: ['dry-run', 'limit', 'kind', 'quality', 'max-dim', 'no-webp', 'keep-old'], manual: true),
 
             // ---- Fase 3: limpeza / fidelidade (rodar só o que precisar) ----
             self::s('fix-charset',          'mybb:fix-charset',          '3'),

@@ -92,6 +92,8 @@ export default class ImagesCard extends Component<Attrs> {
           {this.numberField("image_max_file_mb", "images.max_file_mb")}
         </div>
 
+        {this.optimizationBlock(media)}
+
         <div className="MmField MmField--wide">
           <label>{trans("images.attachments_dir")}</label>
           <input
@@ -170,6 +172,39 @@ export default class ImagesCard extends Component<Attrs> {
     );
   }
 
+  /**
+   * Otimização na entrada + ritmo de rede.
+   *
+   * Os dois grupos moram juntos de propósito: são as duas decisões que só têm
+   * efeito NA HORA de baixar. Depois que a migração passou, mudar qualquer um
+   * deles exige rebaixar as imagens e reescrever os posts.
+   */
+  private optimizationBlock(media: MediaConfig): Mithril.Children {
+    return (
+      <div className="MmField MmField--wide">
+        <label>{trans("images.optimize")}</label>
+        <div className="MmHint">{trans("images.optimize_hint")}</div>
+
+        <div className="MmOpts">
+          {this.boolField("image_optimize", "images.optimize_on")}
+          {this.boolField("image_webp", "images.webp")}
+        </div>
+
+        {!media.webp_supported && (
+          <div className="MmAlert MmAlert--warn">{trans("images.no_webp_support")}</div>
+        )}
+
+        <div className="MmGrid">
+          {this.numberField("image_quality", "images.quality")}
+          {this.numberField("image_max_dim", "images.max_dim")}
+          {this.numberField("image_host_delay", "images.host_delay")}
+          {this.numberField("image_retries", "images.retries")}
+        </div>
+        <div className="MmHint">{trans("images.host_delay_hint")}</div>
+      </div>
+    );
+  }
+
   private seed(media: MediaConfig): void {
     if (this.seeded) return;
     this.form = {
@@ -177,6 +212,12 @@ export default class ImagesCard extends Component<Attrs> {
       image_limit: media.image_limit,
       image_max_mb: media.image_max_mb,
       image_max_file_mb: media.image_max_file_mb,
+      image_optimize: media.image_optimize,
+      image_webp: media.image_webp,
+      image_quality: media.image_quality,
+      image_max_dim: media.image_max_dim,
+      image_host_delay: media.image_host_delay,
+      image_retries: media.image_retries,
       attachments_dir: media.attachments_dir,
     };
     this.seeded = true;
@@ -198,6 +239,24 @@ export default class ImagesCard extends Component<Attrs> {
     if (media.image_hosts !== "" && media.attachments_dir !== "") return;
 
     void this.onDetect();
+  }
+
+  private boolField(
+    name: "image_optimize" | "image_webp",
+    labelKey: string
+  ): Mithril.Children {
+    return (
+      <label className="MmOpt">
+        <input
+          type="checkbox"
+          checked={this.form[name] !== false}
+          onchange={(e: Event) =>
+            (this.form[name] = (e.target as HTMLInputElement).checked)
+          }
+        />
+        {trans(labelKey)}
+      </label>
+    );
   }
 
   private numberField(name: keyof ConnectionPayload, labelKey: string): Mithril.Children {
@@ -293,6 +352,14 @@ export default class ImagesCard extends Component<Attrs> {
         <span className="MmChip">
           {trans("images.stats.images_failed")}: {stats.images_failed.toLocaleString()}
         </span>
+        {/* Adiadas só aparecem quando existem: um contador zerado de "volta
+            sozinha" é ruído. */}
+        {(stats.images_deferred > 0 || stats.attachments_deferred > 0) && (
+          <span className="MmChip">
+            {trans("images.stats.deferred")}:{" "}
+            {(stats.images_deferred + stats.attachments_deferred).toLocaleString()}
+          </span>
+        )}
         <span className="MmChip">
           {trans("images.stats.attachments_ok")}: {stats.attachments_ok.toLocaleString()}
         </span>

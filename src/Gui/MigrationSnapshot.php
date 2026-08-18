@@ -56,6 +56,15 @@ class MigrationSnapshot
             'image_limit'       => (int) ($this->settings->get('mybb-migrator.image_limit') ?? 50),
             'image_max_mb'      => (int) ($this->settings->get('mybb-migrator.image_max_mb') ?? 200),
             'image_max_file_mb' => (int) ($this->settings->get('mybb-migrator.image_max_file_mb') ?? 10),
+            'image_optimize'    => (string) ($this->settings->get('mybb-migrator.image_optimize') ?? '1') !== '0',
+            'image_webp'        => (string) ($this->settings->get('mybb-migrator.image_webp') ?? '1') !== '0',
+            'image_quality'     => (int) ($this->settings->get('mybb-migrator.image_quality') ?? 82),
+            'image_max_dim'     => (int) ($this->settings->get('mybb-migrator.image_max_dim') ?? 1600),
+            'image_host_delay'  => (int) ($this->settings->get('mybb-migrator.image_host_delay') ?? 350),
+            'image_retries'     => (int) ($this->settings->get('mybb-migrator.image_retries') ?? 3),
+            // Sem GD com libwebp o comando grava o formato de origem; o painel
+            // avisa em vez de prometer uma conversão que não vai acontecer.
+            'webp_supported'    => function_exists('imagewebp'),
             'attachments_dir'   => (string) ($this->settings->get('mybb-migrator.attachments_dir') ?? ''),
             'fof_upload'        => $this->extensions->isEnabled('fof-upload'),
             'upload_table'      => $this->hasTable('fof_upload_files'),
@@ -73,7 +82,11 @@ class MigrationSnapshot
      */
     public function mediaStats(): array
     {
-        $empty = ['images_ok' => 0, 'images_failed' => 0, 'attachments_ok' => 0, 'attachments_failed' => 0, 'bytes' => 0];
+        $empty = [
+            'images_ok' => 0, 'images_failed' => 0, 'images_deferred' => 0,
+            'attachments_ok' => 0, 'attachments_failed' => 0, 'attachments_deferred' => 0,
+            'bytes' => 0,
+        ];
 
         if (! $this->hasTable('mybb_migrated_images')) {
             return $empty;
@@ -90,8 +103,16 @@ class MigrationSnapshot
 
         $out = $empty;
         foreach ($rows as $row) {
+            // 'deferred' (429/timeout) tem balde próprio: contá-lo como falha
+            // faria o painel anunciar imagens perdidas que voltam sozinhas na
+            // próxima execução do passo.
+            $status = (string) $row->status;
             $key = ((string) $row->kind === 'attachment' ? 'attachments' : 'images')
-                . ((string) $row->status === 'ok' ? '_ok' : '_failed');
+                . match ($status) {
+                    'ok'       => '_ok',
+                    'deferred' => '_deferred',
+                    default    => '_failed',
+                };
             $out[$key] = ($out[$key] ?? 0) + (int) $row->n;
             $out['bytes'] += (int) $row->bytes;
         }

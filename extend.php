@@ -57,6 +57,7 @@ use Ramon\MybbMigrator\Console\RebuildFormattingCommand;
 use Ramon\MybbMigrator\Console\RecoverProtectedPostsCommand;
 use Ramon\MybbMigrator\Console\ReimportSignaturesCommand;
 use Ramon\MybbMigrator\Console\MigrateSignaturesCommand;
+use Ramon\MybbMigrator\Console\OptimizeMediaCommand;
 use Ramon\MybbMigrator\Console\TestBioRenderCommand;
 use Ramon\MybbMigrator\Console\TestCredentialsCommand;
 use Ramon\MybbMigrator\Console\WipeCommand;
@@ -87,6 +88,18 @@ return [
         ->default('mybb-migrator.image_limit', 50)
         ->default('mybb-migrator.image_max_mb', 200)
         ->default('mybb-migrator.image_max_file_mb', 10)
+        // Otimização na ENTRADA. É a única hora barata de fazer: depois de
+        // migrado, mudar o formato das imagens obriga a reescrever o XML de
+        // milhares de posts. Padrões conservadores — 1600 px ainda atende o
+        // lightbox em tela retina, e 82 de qualidade é o joelho da curva do WebP.
+        ->default('mybb-migrator.image_optimize', 1)
+        ->default('mybb-migrator.image_webp', 1)
+        ->default('mybb-migrator.image_quality', 82)
+        ->default('mybb-migrator.image_max_dim', 1600)
+        // Ritmo de rede: sem isto, varrer centenas de imagens do mesmo host
+        // (i.imgur.com) rende HTTP 429 em bloco.
+        ->default('mybb-migrator.image_retries', 3)
+        ->default('mybb-migrator.image_host_delay', 350)
         // Pasta `uploads` do MyBB, se acessível: evita depender do site antigo.
         ->default('mybb-migrator.attachments_dir', '')
         // Segundos de validade do cache de contagens (COUNT(*) no MyBB custa
@@ -114,6 +127,7 @@ return [
         ->command(MigrateAvatarsCommand::class)
         ->command(MigrateImagesCommand::class)
         ->command(MigrateAttachmentsCommand::class)
+        ->command(OptimizeMediaCommand::class)
         ->command(MigrateTagsCommand::class)
         ->command(MigrateContentCommand::class)
         ->command(MigrateLikesCommand::class)

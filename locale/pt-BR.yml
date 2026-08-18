@@ -102,7 +102,9 @@ ramon-mybb-migrator:
         Estes dois passos acessam a rede e consomem disco, então ficam fora do
         “Rodar tudo”. Comece com um limite pequeno e um dry-run, olhe o fórum e
         só então aumente o orçamento. Nada já baixado é rebaixado, e URLs mortas
-        ficam registradas para não serem retentadas.
+        ficam registradas para não serem retentadas. Host que recusa por excesso
+        de requisições (HTTP 429) ou que estoura o tempo é outro caso: essas URLs
+        só ficam ADIADAS, e a execução seguinte as tenta de novo sozinha.
       hosts: URLs a internalizar
       hosts_count: "{count} host(s)"
       hosts_hint: >-
@@ -114,6 +116,27 @@ ramon-mybb-migrator:
       limit: Imagens por execução
       max_mb: MB totais por execução
       max_file_mb: MB máx. por arquivo
+      optimize: Otimização na importação
+      optimize_hint: >-
+        Imagem de fórum antigo é JPEG de câmera: 3000 px e 2 MB para ser exibida
+        a 700 px. Reencodar na entrada corta tipicamente 80-90% do disco que ela
+        ocuparia, e esta é a única hora barata de fazer isso — depois, mudar o
+        formato das imagens significa reescrever o XML de milhares de posts. O
+        que pioraria (GIF animado, SVG, AVIF, ou resultado que não ficou menor)
+        é gravado exatamente como foi baixado.
+      optimize_on: Reencodar as imagens
+      webp: Converter para WebP
+      no_webp_support: >-
+        Este PHP não tem suporte a WebP (GD sem libwebp); as imagens são
+        otimizadas no formato de origem.
+      quality: Qualidade (30-100)
+      max_dim: Maior lado (px, 0 = manter)
+      host_delay: Intervalo por host (ms)
+      retries: Retentativas em 429/timeout
+      host_delay_hint: >-
+        Espaçamento entre requisições ao MESMO host e quantas vezes um download
+        recusado ou lento é retentado (com backoff, respeitando o Retry-After).
+        Aumente o intervalo se o imgur insistir em HTTP 429.
       attachments_dir: Pasta uploads do MyBB (opcional)
       attachments_dir_hint: >-
         Caminho da pasta “uploads” do MyBB. Preenchida, os anexos são copiados
@@ -149,6 +172,7 @@ ramon-mybb-migrator:
       stats:
         images_ok: Imagens internalizadas
         images_failed: Imagens com falha
+        deferred: Adiadas (429/timeout)
         attachments_ok: Anexos migrados
         attachments_failed: Anexos com falha
         disk: Disco usado
@@ -217,4 +241,5 @@ ramon-mybb-migrator:
         make-admin: Promove sua conta a Admin (informe o usuário).
         images: Baixa as imagens remotas usadas pelos posts migrados e reaponta os posts para a cópia local. Pula URLs já internalizadas; lembra as mortas.
         attachments: Migra os anexos dos posts do MyBB para o armazenamento local e os acrescenta aos posts migrados.
+        optimize-media: Reencoda o que já foi internalizado (WebP + redimensionamento), reaponta os posts e o gerenciador de mídia para o arquivo novo e só então apaga o antigo. Para o que foi migrado antes de a otimização existir.
         legacy-passwords: Preenche mybb_legacy_passwords para usuários já existentes (leva as senhas do MyBB a um Flarum já migrado). Pula quem já tem linha.

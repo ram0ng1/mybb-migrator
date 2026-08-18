@@ -102,6 +102,8 @@ ramon-mybb-migrator:
         “Run everything”. Start with a small limit and a dry-run, look at the
         forum, then raise the budget. Files already downloaded are never
         downloaded again, and dead URLs are remembered so they are not retried.
+        A host that rate-limits us (HTTP 429) or times out is a different case:
+        those URLs are only deferred, and the next run picks them up on its own.
       hosts: URLs to localize
       hosts_count: "{count} host(s)"
       hosts_hint: >-
@@ -113,6 +115,27 @@ ramon-mybb-migrator:
       limit: Images per run
       max_mb: Total MB per run
       max_file_mb: Max MB per file
+      optimize: Optimization on import
+      optimize_hint: >-
+        Old forum images are camera JPEGs: 3000 px and 2 MB to be displayed at
+        700 px. Re-encoding them as they come in typically cuts 80-90% of the
+        disk they would take, and this is the only cheap moment to do it —
+        afterwards, changing the image format means rewriting the XML of
+        thousands of posts. Anything that would get worse (animated GIFs, SVG,
+        AVIF, or a result that is not smaller) is stored exactly as downloaded.
+      optimize_on: Re-encode images
+      webp: Convert to WebP
+      no_webp_support: >-
+        This PHP has no WebP support (GD without libwebp), so images are
+        optimized in their original format instead.
+      quality: Quality (30-100)
+      max_dim: Longest side (px, 0 = keep)
+      host_delay: Delay per host (ms)
+      retries: Retries on 429/timeout
+      host_delay_hint: >-
+        Spacing between requests to the same host, and how many times a
+        rate-limited or timed-out download is retried (with backoff, honouring
+        Retry-After). Raise the delay if you keep seeing HTTP 429 from imgur.
       attachments_dir: MyBB uploads folder (optional)
       attachments_dir_hint: >-
         Path to the MyBB “uploads” folder. When set, attachments are copied
@@ -148,6 +171,7 @@ ramon-mybb-migrator:
       stats:
         images_ok: Images localized
         images_failed: Images failed
+        deferred: Deferred (429/timeout)
         attachments_ok: Attachments migrated
         attachments_failed: Attachments failed
         disk: Disk used
@@ -216,4 +240,5 @@ ramon-mybb-migrator:
         make-admin: Promote your account to Admin (set the username).
         images: Downloads the remote images used by migrated posts and repoints the posts at the local copies. Skips URLs already localized; remembers dead ones.
         attachments: Migrates MyBB post attachments into local storage and appends them to the migrated posts.
+        optimize-media: Re-encodes files already localized (WebP + resize), repoints the posts and the media manager at the new file, then deletes the old one. For anything migrated before optimization existed.
         legacy-passwords: Backfill mybb_legacy_passwords for existing users (carry MyBB passwords to an already-migrated Flarum). Skips users that already have a row.

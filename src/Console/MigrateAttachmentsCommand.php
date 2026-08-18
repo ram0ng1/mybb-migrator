@@ -9,6 +9,7 @@ use Illuminate\Database\ConnectionInterface;
 use Ramon\MybbMigrator\Gui\MediaDetector;
 use Ramon\MybbMigrator\Gui\StepStore;
 use Ramon\MybbMigrator\Support\ImageFetcher;
+use Ramon\MybbMigrator\Support\ImageOptimizer;
 use Ramon\MybbMigrator\Support\ImageStore;
 use Ramon\MybbMigrator\Support\PrivateUploadBridge;
 use Ramon\MybbMigrator\Support\UploadVisibilityBridge;
@@ -37,6 +38,7 @@ use Symfony\Component\Console\Input\InputOption;
  */
 class MigrateAttachmentsCommand extends AbstractCommand
 {
+    use MediaFetchOptions;
     use MybbConnectionOptions;
 
     private int $seen = 0;
@@ -47,7 +49,12 @@ class MigrateAttachmentsCommand extends AbstractCommand
     private int $alreadyDone = 0;
     private int $missingPost = 0;
     private int $failed = 0;
+    /** Falhas TRANSITÓRIAS (429/timeout/5xx): voltam sozinhas na próxima execução. */
+    private int $deferred = 0;
     private int $bytes = 0;
+    /** Anexos de imagem re-encodados e bytes poupados por isso. */
+    private int $optimized = 0;
+    private int $savedBytes = 0;
     /** Arquivos gravados direto fora do document root (discussão restrita). */
     private int $privateWrites = 0;
     private bool $budgetHit = false;
@@ -78,7 +85,8 @@ class MigrateAttachmentsCommand extends AbstractCommand
             ->addOption('uploads-dir', null, InputOption::VALUE_REQUIRED, 'Path to the MyBB uploads folder (copies files directly instead of downloading).')
             ->addOption('include-hidden', null, InputOption::VALUE_NONE, 'Also migrate attachments still pending approval (visible = 0).')
             ->addOption('retry-failed', null, InputOption::VALUE_NONE, 'Try attachments previously recorded as failed again.')
-            ->addOption('timeout', null, InputOption::VALUE_REQUIRED, 'Per-request timeout in seconds.');
+            ->addOption('timeout', null, InputOption::VALUE_REQUIRED, 'Idle timeout per request, in seconds: a download that keeps progressing is no longer killed.');
+        $this->addMediaFetchOptions();
         $this->addMybbConnectionOptions();
     }
 
@@ -133,7 +141,8 @@ class MigrateAttachmentsCommand extends AbstractCommand
 
         $maxBytes = max(1, $maxFileMb) * 1048576;
         $budgetBytes = $maxMb > 0 ? $maxMb * 1048576 : 0;
-        $fetcher = new ImageFetcher($timeout, $maxBytes);
+        $fetcher = $this->buildFetcher($this->settings, $timeout, $maxBytes);
+        $optimizer = $this->buildOptimizer($this->settings);
 
         $this->info('Origem : ' . ($uploadsDir !== '' ? "pasta local {$uploadsDir}" : "download em {$oldSite}/attachment.php"));
         if ($this->private->available()) {
@@ -143,6 +152,10 @@ class MigrateAttachmentsCommand extends AbstractCommand
         $this->info('Limites: ' . ($limit > 0 ? "{$limit} anexos" : 'sem limite')
             . ' / ' . ($maxMb > 0 ? "{$maxMb} MB" : 'sem limite de volume')
             . ' / ' . "{$maxFileMb} MB por arquivo");
+        if ($uploadsDir === '') {
+            $this->info('Rede   : ' . $this->describeFetch($this->settings, $timeout));
+        }
+        $this->info('Otimiza: ' . $optimizer->describe() . ' (só vale para anexos de imagem)');
 
         if (! $this->store->uploadTableAvailable()) {
             $this->info('⚠ fof/upload não está instalado: os anexos serão gravados e linkados no post, '
@@ -208,7 +221,10 @@ class MigrateAttachmentsCommand extends AbstractCommand
                 continue;
             }
 
-            if ($known !== null && ! $retryFailed) {
+            // Falha TRANSITÓRIA (429/timeout ao baixar do site antigo) volta
+            // sozinha na execução seguinte; só o que morreu de verdade fica
+            // congelado até alguém pedir --retry-failed.
+            if ($known !== null && $known['status'] !== 'deferred' && ! $retryFailed) {
                 continue;
             }
 
@@ -228,17 +244,41 @@ class MigrateAttachmentsCommand extends AbstractCommand
                 continue;
             }
 
-            $bytes = $this->readAttachment($fetcher, $uploadsDir, $oldSite, $aid, (string) $row['attachname'], $maxBytes, $error);
+            $transient = false;
+            $bytes = $this->readAttachment($fetcher, $uploadsDir, $oldSite, $aid, (string) $row['attachname'], $maxBytes, $error, $transient);
 
             if ($bytes === null) {
-                $this->failed++;
-                $this->info("⚠ falhou aid={$aid} ({$row['filename']}) — {$error}");
-                $this->remember($key, ['status' => 'failed', 'error' => $error, 'local_url' => null, 'mime' => null], $map);
+                $transient ? $this->deferred++ : $this->failed++;
+                $this->info(($transient ? "⏳ adiado aid={$aid}" : "⚠ falhou aid={$aid}") . " ({$row['filename']}) — {$error}");
+                $this->remember($key, [
+                    'status'    => $transient ? 'deferred' : 'failed',
+                    'error'     => $error,
+                    'local_url' => null,
+                    'mime'      => null,
+                ], $map);
                 continue;
             }
 
+            $read = strlen($bytes);
             $mime = $this->detectMime($bytes, (string) $row['filetype']);
             $ext = $this->extensionFor((string) $row['filename'], $mime);
+            $baseName = (string) $row['filename'];
+
+            // Anexo de imagem passa pelo mesmo re-encode das imagens de post; o
+            // resto (zip, pdf, txt) segue byte a byte como estava.
+            if (str_starts_with($mime, 'image/')) {
+                $opt = $optimizer->optimize($bytes, $mime, $ext);
+                if ($opt['changed']) {
+                    $this->optimized++;
+                    $this->savedBytes += $opt['saved'];
+                    $this->info("  ↓ aid={$aid} " . $opt['note']);
+                    // O nome visível ao usuário acompanha o formato real: baixar
+                    // um "foto.jpg" que é WebP por dentro confunde qualquer um.
+                    $baseName = $this->renameExtension($baseName, $opt['ext']);
+                }
+                [$bytes, $mime, $ext] = [$opt['bytes'], $opt['mime'], $opt['ext']];
+            }
+
             $name = $this->store->nameFor($key, $ext, 'mybb-att');
 
             // Mesmo princípio das imagens: o anexo de uma discussão restrita
@@ -263,7 +303,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
                 $this->flarumUserId((int) ($row['uid'] ?? 0)),
                 $pid,
                 (int) $post->discussion_id,
-                (string) $row['filename'],
+                $baseName,
                 $bytes,
             );
 
@@ -272,7 +312,9 @@ class MigrateAttachmentsCommand extends AbstractCommand
             }
 
             $this->copied++;
-            $this->bytes += strlen($bytes);
+            // Orçamento do run mede o que foi LIDO da origem, não o que sobrou
+            // depois de otimizar.
+            $this->bytes += $read;
             $this->visibility->touch($fileId);
 
             $this->remember($key, [
@@ -285,7 +327,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
                 'error'      => null,
             ], $map);
 
-            $this->appendToPost($post, $localUrl, (string) $row['filename'], $mime);
+            $this->appendToPost($post, $localUrl, $baseName, $mime);
             $this->appended++;
         }
 
@@ -370,8 +412,10 @@ class MigrateAttachmentsCommand extends AbstractCommand
         string $attachName,
         int $maxBytes,
         ?string &$error,
+        bool &$transient = false,
     ): ?string {
         $error = null;
+        $transient = false;
 
         if ($uploadsDir !== '') {
             // O MyBB guarda os anexos em subpastas por mês (ex.:
@@ -418,6 +462,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
         $res = $fetcher->fetchFile($oldSite . '/attachment.php?aid=' . $aid);
         if (! $res['ok']) {
             $error = (string) $res['error'];
+            $transient = (bool) ($res['transient'] ?? false);
 
             return null;
         }
@@ -440,6 +485,18 @@ class MigrateAttachmentsCommand extends AbstractCommand
         $declared = strtolower(trim($declared));
 
         return $declared !== '' ? $declared : 'application/octet-stream';
+    }
+
+    /**
+     * Troca a extensão do nome ORIGINAL do anexo pelo formato realmente gravado
+     * (`ferias.jpg` -> `ferias.webp`), preservando o resto do nome — é ele que o
+     * usuário vê no gerenciador de mídia e no download.
+     */
+    private function renameExtension(string $filename, string $ext): string
+    {
+        $stem = (string) pathinfo($filename, PATHINFO_FILENAME);
+
+        return ($stem !== '' ? $stem : 'anexo') . '.' . $ext;
     }
 
     private function extensionFor(string $filename, string $mime): string
@@ -534,7 +591,10 @@ class MigrateAttachmentsCommand extends AbstractCommand
         $this->info("  ja migrados antes       : {$this->alreadyDone}");
         $this->info("  post inexistente        : {$this->missingPost}");
         $this->info('  MB transferidos         : ' . round($this->bytes / 1048576, 2));
+        $this->info("  imagens otimizadas      : {$this->optimized}");
+        $this->info('  MB poupados na otimizac.: ' . round($this->savedBytes / 1048576, 2));
         $this->info("  falhas                  : {$this->failed}");
+        $this->info("  adiados (429/timeout)   : {$this->deferred}");
 
         if ($this->budgetHit) {
             $this->info('⚠ Limite do run atingido — rode de novo (com um limite maior) para continuar.');
@@ -546,6 +606,11 @@ class MigrateAttachmentsCommand extends AbstractCommand
             // destravar evita a impressão de que o anexo é irrecuperável.
             $this->info('⚠ Falhas ficam registradas e não são retentadas sozinhas. Depois de corrigir a origem '
                 . '(--uploads-dir apontando para a pasta uploads do MyBB é o caminho confiável), rode de novo com --retry-failed.');
+        }
+
+        if ($this->deferred > 0) {
+            $this->info("⏳ {$this->deferred} anexo(s) adiados por limite de requisições ou lentidão do site antigo — "
+                . 'basta rodar o passo de novo, sem --retry-failed, que eles voltam a ser tentados.');
         }
     }
 }

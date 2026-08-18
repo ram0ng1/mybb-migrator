@@ -9,6 +9,7 @@ use Illuminate\Database\ConnectionInterface;
 use Ramon\MybbMigrator\Gui\MediaDetector;
 use Ramon\MybbMigrator\Gui\StepStore;
 use Ramon\MybbMigrator\Support\ImageFetcher;
+use Ramon\MybbMigrator\Support\ImageOptimizer;
 use Ramon\MybbMigrator\Support\ImageStore;
 use Ramon\MybbMigrator\Support\PrivateUploadBridge;
 use Ramon\MybbMigrator\Support\UploadVisibilityBridge;
@@ -29,7 +30,11 @@ use Symfony\Component\Console\Input\InputOption;
  *  - `--dry-run`: relatório completo sem tocar em disco nem no banco.
  *  - URLs já baixadas ficam em `mybb_migrated_images` e são REAPONTADAS sem
  *    rede; URLs mortas ficam como `failed` e não são retentadas (a menos de
- *    `--retry-failed`). É o "pular links já populados".
+ *    `--retry-failed`). É o "pular links já populados". Falha TRANSITÓRIA
+ *    (HTTP 429, timeout) fica como `deferred` e volta sozinha no próximo run.
+ *  - o que é baixado passa pelo ImageOptimizer antes de virar arquivo: WebP,
+ *    limite de dimensão, e recusa de otimizar o que pioraria (`--no-optimize`
+ *    desliga tudo).
  *  - `--relink-only`: nenhum acesso à rede; só reaplica o mapa já existente —
  *    use depois de `mybb:rebuild-formatting`, que regenera os posts a partir do
  *    MyBB e devolveria as URLs remotas.
@@ -40,6 +45,8 @@ use Symfony\Component\Console\Input\InputOption;
  */
 class MigrateImagesCommand extends AbstractCommand
 {
+    use MediaFetchOptions;
+
     /** Contadores exibidos no resumo (o painel lê "rótulo: número"). */
     private int $scanned = 0;
     private int $found = 0;
@@ -52,7 +59,12 @@ class MigrateImagesCommand extends AbstractCommand
     private int $skippedLocal = 0;
     private int $skippedFailed = 0;
     private int $failed = 0;
+    /** Falhas TRANSITÓRIAS (429/timeout/5xx): voltam sozinhas na próxima execução. */
+    private int $deferred = 0;
     private int $bytes = 0;
+    /** Imagens re-encodadas (webp/redimensionadas) e bytes poupados por isso. */
+    private int $optimized = 0;
+    private int $savedBytes = 0;
     /** Arquivos gravados direto fora do document root (discussão restrita). */
     private int $privateWrites = 0;
     private bool $budgetHit = false;
@@ -87,7 +99,8 @@ class MigrateImagesCommand extends AbstractCommand
             ->addOption('discussion', null, InputOption::VALUE_REQUIRED, 'Only this discussion: accepts an id, a slug or a full Flarum discussion URL.')
             ->addOption('retry-failed', null, InputOption::VALUE_NONE, 'Try URLs previously recorded as failed again.')
             ->addOption('relink-only', null, InputOption::VALUE_NONE, 'No network: only re-apply URLs already downloaded.')
-            ->addOption('timeout', null, InputOption::VALUE_REQUIRED, 'Per-request timeout in seconds.');
+            ->addOption('timeout', null, InputOption::VALUE_REQUIRED, 'Idle timeout per request, in seconds: a download that keeps progressing is no longer killed.');
+        $this->addMediaFetchOptions();
     }
 
     protected function fire(): int
@@ -162,7 +175,8 @@ class MigrateImagesCommand extends AbstractCommand
             }
         }
 
-        $fetcher = new ImageFetcher($timeout, max(1, $maxFileMb) * 1048576);
+        $fetcher = $this->buildFetcher($this->settings, $timeout, max(1, $maxFileMb) * 1048576);
+        $optimizer = $this->buildOptimizer($this->settings);
         $budgetBytes = $maxMb > 0 ? $maxMb * 1048576 : 0;
 
         $this->info('Destino: ' . $this->store->directoryHint($this->paths->public));
@@ -174,6 +188,8 @@ class MigrateImagesCommand extends AbstractCommand
         $this->info('Limites: ' . ($limit > 0 ? "{$limit} downloads" : 'sem limite de downloads')
             . ' / ' . ($maxMb > 0 ? "{$maxMb} MB" : 'sem limite de volume')
             . ' / ' . "{$maxFileMb} MB por arquivo");
+        $this->info('Rede   : ' . $this->describeFetch($this->settings, $timeout));
+        $this->info('Otimiza: ' . $optimizer->describe());
 
         if (! $this->store->uploadTableAvailable()) {
             $this->info('⚠ fof/upload não está instalado: os arquivos serão gravados e apontados normalmente, '
@@ -216,7 +232,7 @@ class MigrateImagesCommand extends AbstractCommand
         $stop = false;
 
         $query->orderBy('id')->chunkById(200, function ($rows) use (
-            &$map, &$stop, $fetcher, $dryRun, $relinkOnly, $retryFailed,
+            &$map, &$stop, $fetcher, $optimizer, $dryRun, $relinkOnly, $retryFailed,
             $limit, $budgetBytes, $maxPosts, $allHosts, $hosts, $total
         ) {
             foreach ($rows as $row) {
@@ -267,7 +283,12 @@ class MigrateImagesCommand extends AbstractCommand
                         continue;
                     }
 
-                    if ($known !== null && ! $retryFailed) {
+                    // Falha TRANSITÓRIA (429 do imgur, lentidão do postimg) volta
+                    // sozinha na execução seguinte: exigir --retry-failed nesse
+                    // caso transformaria um soluço de rede em imagem perdida para
+                    // sempre. Só o que morreu de verdade (404, removida) fica
+                    // congelado até alguém pedir a retentativa.
+                    if ($known !== null && $known['status'] !== 'deferred' && ! $retryFailed) {
                         $this->skippedFailed++;
                         continue;
                     }
@@ -288,7 +309,7 @@ class MigrateImagesCommand extends AbstractCommand
                     }
 
                     $this->attempted++;
-                    $local = $this->download($fetcher, $rawUrl, $dryRun, (int) $row->id, $row->user_id === null ? null : (int) $row->user_id, (int) $row->discussion_id, $map);
+                    $local = $this->download($fetcher, $optimizer, $rawUrl, $dryRun, (int) $row->id, $row->user_id === null ? null : (int) $row->user_id, (int) $row->discussion_id, $map);
 
                     if ($local !== null) {
                         $replacements[(string) $escaped] = $local;
@@ -414,6 +435,7 @@ class MigrateImagesCommand extends AbstractCommand
      */
     private function download(
         ImageFetcher $fetcher,
+        ImageOptimizer $optimizer,
         string $url,
         bool $dryRun,
         int $postId,
@@ -431,15 +453,34 @@ class MigrateImagesCommand extends AbstractCommand
         $res = $fetcher->fetchImage($url);
 
         if (! $res['ok']) {
-            $this->failed++;
-            $this->info('⚠ falhou ' . $url . ' — ' . ($res['error'] ?? 'erro desconhecido'));
-            $this->remember($url, ['status' => 'failed', 'error' => $res['error'], 'local_url' => null], $map);
+            // `transient` = o host recusou (429) ou demorou, NÃO que a imagem
+            // morreu. Gravar isso como 'failed' aposentaria a URL para sempre.
+            $transient = (bool) ($res['transient'] ?? false);
+            $transient ? $this->deferred++ : $this->failed++;
+
+            $this->info(($transient ? '⏳ adiada ' : '⚠ falhou ') . $url . ' — ' . ($res['error'] ?? 'erro desconhecido'));
+            $this->remember($url, [
+                'status'    => $transient ? 'deferred' : 'failed',
+                'error'     => $res['error'],
+                'local_url' => null,
+            ], $map);
 
             return null;
         }
 
-        $bytes = (string) $res['bytes'];
-        $name = $this->store->nameFor($url, (string) $res['ext']);
+        $downloaded = strlen((string) $res['bytes']);
+
+        // Re-encode ANTES de escolher o nome: a extensão faz parte do nome do
+        // arquivo, então um jpg que vira webp precisa nascer já como .webp.
+        $opt = $optimizer->optimize((string) $res['bytes'], $res['mime'], $res['ext']);
+        if ($opt['changed']) {
+            $this->optimized++;
+            $this->savedBytes += $opt['saved'];
+            $this->info('  ↓ ' . $opt['note']);
+        }
+
+        $bytes = $opt['bytes'];
+        $name = $this->store->nameFor($url, $opt['ext']);
 
         // O LADO é decidido antes de gravar. Um arquivo de discussão restrita
         // nunca chega a existir sob o document root, nem por um instante — a
@@ -462,7 +503,7 @@ class MigrateImagesCommand extends AbstractCommand
         $fileId = $this->store->registerUploadFile(
             $name,
             $localUrl,
-            (string) $res['mime'],
+            $opt['mime'],
             strlen($bytes),
             $actorId,
             $postId,
@@ -476,7 +517,9 @@ class MigrateImagesCommand extends AbstractCommand
         }
 
         $this->downloaded++;
-        $this->bytes += strlen($bytes);
+        // O orçamento do run (--max-mb) mede TRÁFEGO, então conta o que veio da
+        // rede — não o que sobrou depois de otimizar.
+        $this->bytes += $downloaded;
         $this->visibility->touch($fileId);
 
         $this->remember($url, [
@@ -484,7 +527,7 @@ class MigrateImagesCommand extends AbstractCommand
             'local_name' => $name,
             'local_url'  => $localUrl,
             'size'       => strlen($bytes),
-            'mime'       => $res['mime'],
+            'mime'       => $opt['mime'],
             'file_id'    => $fileId,
             'error'      => null,
         ], $map);
@@ -676,10 +719,13 @@ class MigrateImagesCommand extends AbstractCommand
         $this->info("  imagens reapontadas     : {$this->relinked}");
         $this->info("  posts atualizados       : {$this->postsUpdated}");
         $this->info('  MB baixados             : ' . round($this->bytes / 1048576, 2));
+        $this->info("  imagens otimizadas      : {$this->optimized}");
+        $this->info('  MB poupados na otimizac.: ' . round($this->savedBytes / 1048576, 2));
         $this->info("  puladas (host de fora)  : {$this->skippedHost}");
         $this->info("  puladas (ja locais)     : {$this->skippedLocal}");
         $this->info("  puladas (falha anterior): {$this->skippedFailed}");
         $this->info("  falhas                  : {$this->failed}");
+        $this->info("  adiadas (429/timeout)   : {$this->deferred}");
 
         if ($this->budgetHit) {
             $this->info('⚠ Limite do run atingido — a varredura parou antes do fim. '
@@ -689,6 +735,12 @@ class MigrateImagesCommand extends AbstractCommand
         if ($this->failed > 0) {
             $this->info('⚠ URLs que falharam ficam registradas e não são retentadas sozinhas '
                 . '(a maioria é imagem realmente apagada na origem). Use --retry-failed para tentar de novo.');
+        }
+
+        if ($this->deferred > 0) {
+            $this->info("⏳ {$this->deferred} URL(s) adiadas por limite de requisições (429) ou lentidão do host — "
+                . 'NÃO são imagens perdidas. Rode o passo de novo, sem --retry-failed, que elas voltam a ser '
+                . 'tentadas; se o host insistir no 429, aumente --host-delay.');
         }
     }
 }

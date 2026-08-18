@@ -297,6 +297,16 @@ php flarum mybb:images --force --hosts=i.imgur.com,damnfineshave.com --limit=0 -
 
 # Attachments: copy straight off the MyBB uploads folder (preferred)
 php flarum mybb:attachments --force --uploads-dir=/var/www/mybb/uploads --limit=10
+
+# A host that keeps answering 429 (imgur is the usual one): slow down, retry more
+php flarum mybb:images --force --host-delay=1500 --retries=5
+
+# Keep the originals byte for byte (no WebP, no resizing)
+php flarum mybb:images --force --no-optimize
+
+# Already migrated before optimization existed? Re-encode what is on disk
+php flarum mybb:optimize-media --force --dry-run
+php flarum mybb:optimize-media --force --limit=50
 ```
 
 | Option | Meaning |
@@ -313,6 +323,13 @@ php flarum mybb:attachments --force --uploads-dir=/var/www/mybb/uploads --limit=
 | `--relink-only` | No network at all: only re-apply URLs already downloaded. |
 | `--uploads-dir=PATH` | *(attachments)* Copy from the MyBB `uploads` folder instead of downloading. |
 | `--include-hidden` | *(attachments)* Also take attachments still pending approval. |
+| `--host-delay=MS` | Minimum gap between requests to the **same** host (default 350 ms). Raise it when a host keeps answering `429`. |
+| `--retries=N` | Retries for transient failures — `429`, `5xx`, timeouts (default 3), with exponential backoff that honours `Retry-After`. |
+| `--timeout=S` | Seconds **without traffic** before giving up (default 20). A slow-but-progressing download is no longer killed. |
+| `--quality=N` | Re-encoding quality, 30-100 (default 82). |
+| `--max-dim=N` | Resize anything whose longest side exceeds N pixels (default 1600; `0` keeps the original size). |
+| `--no-webp` | Optimize without converting to WebP — keeps the source format. |
+| `--no-optimize` | Store the bytes exactly as downloaded: no re-encoding, no resizing. |
 
 What makes re-running safe:
 
@@ -320,6 +337,11 @@ What makes re-running safe:
   are re-pointed without touching the network — that is the "skip images already
   populated" behaviour. Dead ones are remembered as `failed` and are not retried
   unless you ask.
+- A **transient** failure is a different thing from a dead image, and is stored
+  as `deferred`: HTTP `429`/`5xx`, a timeout, a connection reset. Those come back
+  on their own next run — no `--retry-failed` needed. (Runs from before this
+  distinction existed are reclassified by a migration, so URLs that only ever
+  failed with `429`/timeout are queued again.)
 - Local filenames are a hash of the source URL, so the same remote image always
   maps to the same local file; nothing is ever downloaded twice.
 - After `mybb:rebuild-formatting` (which re-derives posts from MyBB and brings
@@ -336,6 +358,74 @@ Dead-image handling worth knowing about:
   a grey "image removed" tile.
 - The MIME type comes from the **bytes** (finfo / magic numbers), never from the
   URL extension or the declared `Content-Type`.
+
+#### Rate limits and slow hosts
+
+An old forum concentrates hundreds of images on a handful of hosts, so
+downloading them as fast as possible is the reliable way to earn `HTTP 429` in
+bulk. The fetcher therefore:
+
+- keeps a **minimum gap between requests to the same host** (`--host-delay`,
+  350 ms by default) and a **penalty that doubles on every 429** for that host —
+  halved again on each success, so one bad patch does not slow the whole run
+  forever;
+- **retries** transient failures with exponential backoff plus jitter, honouring
+  `Retry-After` when the server sends it;
+- treats `--timeout` as an **idle** timeout (cURL low-speed) instead of a hard
+  deadline, so `postimg.cc` handing over 100 kB in 20 s is no longer killed
+  mid-transfer — and if it does die, the retry **resumes** with `Range:` from the
+  bytes already received;
+- **does not burn the imgur extension variants on a 429.** Those `.png`/`.jpeg`
+  guesses exist for the "wrong extension" case; firing them at a host that is
+  already refusing us would just quintuple the refused traffic.
+
+#### Optimization on import (WebP)
+
+Forum images from 2010 are camera JPEGs: 3000 px and 2 MB to be shown at 700 px.
+Every downloaded image is re-encoded **before** it is written, which typically
+removes 80-90 % of the disk it would otherwise take. This is the only cheap
+moment to do it — afterwards, changing the image format means rewriting the XML
+of thousands of posts.
+
+- resized so the longest side fits `--max-dim` (1600 px by default), EXIF
+  orientation applied first so camera photos do not land sideways;
+- converted to **WebP** at `--quality` (82 by default), transparency preserved;
+- without WebP support in GD, the source format is optimized instead (JPEG
+  re-encoded, PNG at maximum compression, BMP promoted to PNG);
+- **left exactly as downloaded** whenever re-encoding would make things worse:
+  animated GIF/WebP, SVG, AVIF, an image bigger than 25 MP, bytes that will not
+  decode, or a result that is not at least 5 % smaller.
+
+The file name carries the real format (`mybb-<hash>.webp`), and attachments keep
+their original name with the new extension (`holiday.jpg` → `holiday.webp`), so
+a download never lies about what is inside. Non-image attachments (zip, pdf) are
+copied byte for byte.
+
+#### Optimizing what is already localized
+
+`mybb:optimize-media` walks the files already in `mybb_migrated_images` and
+re-encodes them with the same rules — for forums migrated before optimization
+existed, or downloaded with `--no-optimize`. Per file, in this order, so a post
+never points at a file that is gone:
+
+1. the new file is written (the old one is still there);
+2. the `fof_upload_files` row is repointed, base name included;
+3. the posts are rewritten — a literal replace of the file *name* inside the XML,
+   which covers the `<IMG src>` and the `[img]` token in one pass;
+4. the map row is updated;
+5. only then is the old file deleted (`--keep-old` skips this).
+
+Files stored outside the document root (restricted tags) are re-encoded on their
+own side and stay there. `--dry-run` reports the whole balance without writing
+anything; `--kind=image|attachment` and `--limit=N` narrow the run.
+
+| Option | Meaning |
+| --- | --- |
+| `--dry-run` | Report only — nothing written, repointed or deleted. |
+| `--limit=N` | Max files this run. `0` = all. |
+| `--kind=X` | `image`, `attachment` or `all` (default). |
+| `--keep-old` | Leave the pre-optimization file on disk after repointing. |
+| `--quality`, `--max-dim`, `--no-webp` | Same meaning as on `mybb:images`. |
 
 #### Restricted tags: files are written outside the document root, not moved later
 

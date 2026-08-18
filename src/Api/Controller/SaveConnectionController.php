@@ -59,9 +59,22 @@ class SaveConnectionController implements RequestHandlerInterface
         if (array_key_exists('attachments_dir', $body)) {
             $this->settings->set('mybb-migrator.attachments_dir', trim((string) $body['attachments_dir']));
         }
-        foreach (['image_limit', 'image_max_mb', 'image_max_file_mb'] as $field) {
+        $numeric = [
+            'image_limit', 'image_max_mb', 'image_max_file_mb',
+            // Otimização + ritmo de rede (ver ImageOptimizer / ImageFetcher).
+            'image_quality', 'image_max_dim', 'image_host_delay', 'image_retries',
+        ];
+        foreach ($numeric as $field) {
             if (array_key_exists($field, $body)) {
                 $this->settings->set('mybb-migrator.' . $field, (string) max(0, (int) $body[$field]));
+            }
+        }
+
+        foreach (['image_optimize', 'image_webp'] as $field) {
+            if (array_key_exists($field, $body)) {
+                $value = $body[$field];
+                $on = $value === true || $value === 1 || $value === '1' || $value === 'true';
+                $this->settings->set('mybb-migrator.' . $field, $on ? '1' : '0');
             }
         }
 

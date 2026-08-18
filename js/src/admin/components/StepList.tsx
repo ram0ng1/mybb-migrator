@@ -26,10 +26,22 @@ const BOOL_OPTS = [
   "retry-failed",
   "relink-only",
   "include-hidden",
+  "no-optimize",
+  "no-webp",
+  "keep-old",
 ];
 
 /** Opções cujo input é numérico (as demais com valor são texto livre). */
-const NUMBER_OPTS = ["limit", "max-mb", "max-file-mb", "posts"];
+const NUMBER_OPTS = [
+  "limit",
+  "max-mb",
+  "max-file-mb",
+  "posts",
+  "quality",
+  "max-dim",
+  "host-delay",
+  "retries",
+];
 
 const trans = (key: string, args: Record<string, unknown> = {}): string =>
   extractText(app.translator.trans(`ramon-mybb-migrator.admin.${key}`, args));

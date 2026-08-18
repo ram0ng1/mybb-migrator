@@ -84,6 +84,16 @@ export interface MediaConfig {
   image_limit: number;
   image_max_mb: number;
   image_max_file_mb: number;
+  /** Re-encode na entrada (webp/redimensionamento) ligado? */
+  image_optimize: boolean;
+  image_webp: boolean;
+  image_quality: number;
+  image_max_dim: number;
+  /** Ritmo de rede: ms entre requisições ao mesmo host e retentativas. */
+  image_host_delay: number;
+  image_retries: number;
+  /** O PHP do servidor sabe gravar WebP (GD com libwebp)? */
+  webp_supported: boolean;
   attachments_dir: string;
   /** fof/upload habilitado — necessário para o gerenciador de mídia. */
   fof_upload: boolean;
@@ -99,8 +109,11 @@ export interface MediaConfig {
 export interface MediaStats {
   images_ok: number;
   images_failed: number;
+  /** Adiadas por 429/timeout: voltam sozinhas na próxima execução do passo. */
+  images_deferred: number;
   attachments_ok: number;
   attachments_failed: number;
+  attachments_deferred: number;
   bytes: number;
 }
 
@@ -165,6 +178,12 @@ export interface ConnectionPayload {
   image_limit?: string | number;
   image_max_mb?: string | number;
   image_max_file_mb?: string | number;
+  image_optimize?: boolean;
+  image_webp?: boolean;
+  image_quality?: string | number;
+  image_max_dim?: string | number;
+  image_host_delay?: string | number;
+  image_retries?: string | number;
   attachments_dir?: string;
 }
 
