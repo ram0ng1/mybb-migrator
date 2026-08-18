@@ -411,8 +411,8 @@ order, from `--locale=xx`, the **Console output language** field on the
 Connection tab (`mybb-migrator.cli_locale`), and the forum's `default_locale`.
 
 If a run ever prints raw keys (`ramon-mybb-migrator.cli.…`) instead of text, the
-compiled catalogue under `storage/locale` is stale — delete it (or run
-`php flarum cache:clear`) and the next run rebuilds it.
+compiled catalogue under `storage/locale` is stale — delete that directory's
+contents (`cache:clear` does not touch it) and the next run rebuilds it.
 
 #### Optimizing what is already localized
 
@@ -432,13 +432,21 @@ Files stored outside the document root (restricted tags) are re-encoded on their
 own side and stay there. `--dry-run` reports the whole balance without writing
 anything; `--kind=image|attachment` and `--limit=N` narrow the run.
 
+Three sweeps, each repointing a different place — the map (`fof_upload_files` +
+posts), files on disk with no map row, and **avatars** (`users.avatar_url`),
+which are usually the biggest pile of leftover JPEGs in a migrated forum. Avatar
+`@2x`/`@3x` variants change format together with their base file or not at all,
+because the core derives their path from it.
+
 | Option | Meaning |
 | --- | --- |
+| `--all` | Every image in the forum: map + orphan files + avatars. This is what the panel's "optimize ALL images" step runs. |
+| `--include-orphans`, `--include-avatars`, `--skip-map` | Pick the sweeps one by one. |
 | `--dry-run` | Report only — nothing written, repointed or deleted. |
 | `--limit=N` | Max files this run. `0` = all. |
 | `--kind=X` | `image`, `attachment` or `all` (default). |
 | `--keep-old` | Leave the pre-optimization file on disk after repointing. |
-| `--quality`, `--max-dim`, `--no-webp` | Same meaning as on `mybb:images`. |
+| `--quality`, `--max-dim`, `--min-gain`, `--no-webp` | Same meaning as on `mybb:images`. `--min-gain=0` keeps the WebP whenever it is not bigger. |
 
 #### Restricted tags: files are written outside the document root, not moved later
 
