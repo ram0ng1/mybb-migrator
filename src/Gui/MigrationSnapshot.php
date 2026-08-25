@@ -62,6 +62,7 @@ class MigrationSnapshot
             'image_max_dim'     => (int) ($this->settings->get('mybb-migrator.image_max_dim') ?? 1600),
             'image_host_delay'  => (int) ($this->settings->get('mybb-migrator.image_host_delay') ?? 350),
             'image_retries'     => (int) ($this->settings->get('mybb-migrator.image_retries') ?? 3),
+            'image_exit_ips'    => (string) ($this->settings->get('mybb-migrator.image_exit_ips') ?? ''),
             // Sem GD com libwebp o comando grava o formato de origem; o painel
             // avisa em vez de prometer uma conversão que não vai acontecer.
             'webp_supported'    => function_exists('imagewebp'),

@@ -62,6 +62,15 @@ class SaveConnectionController implements RequestHandlerInterface
         if (array_key_exists('image_hosts', $body)) {
             $this->settings->set('mybb-migrator.image_hosts', $this->normalizeHosts((string) $body['image_hosts']));
         }
+        // IPs/proxies de saída. Guardados como o admin digitou, só com os
+        // separadores normalizados: o ExitPool é quem entende cada formato, e
+        // validar aqui exigiria repetir aquela regra em dois lugares.
+        if (array_key_exists('image_exit_ips', $body)) {
+            $this->settings->set(
+                'mybb-migrator.image_exit_ips',
+                $this->normalizeList((string) $body['image_exit_ips'])
+            );
+        }
         if (array_key_exists('attachments_dir', $body)) {
             $this->settings->set('mybb-migrator.attachments_dir', trim((string) $body['attachments_dir']));
         }
@@ -102,6 +111,21 @@ class SaveConnectionController implements RequestHandlerInterface
      * separada por vírgula, e reduzimos "https://i.imgur.com/" a "i.imgur.com"
      * (URL sem caminho = host), que é o que o filtro do comando compara.
      */
+    /** Mesma liberdade de digitação dos hosts, sem o tratamento de URL. */
+    private function normalizeList(string $raw): string
+    {
+        $out = [];
+
+        foreach (preg_split('/[\s,;]+/', $raw) ?: [] as $entry) {
+            $entry = trim((string) $entry);
+            if ($entry !== '' && ! in_array($entry, $out, true)) {
+                $out[] = $entry;
+            }
+        }
+
+        return implode(',', $out);
+    }
+
     private function normalizeHosts(string $raw): string
     {
         $out = [];

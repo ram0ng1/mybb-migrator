@@ -109,6 +109,10 @@ return [
         // (i.imgur.com) rende HTTP 429 em bloco.
         ->default('mybb-migrator.image_retries', 3)
         ->default('mybb-migrator.image_host_delay', 350)
+        // IPs (ou proxies) por onde os downloads saem, em rodízio. Vazio = o IP
+        // do próprio servidor. O ritmo é contado por host E por IP, então cada
+        // endereço tem a sua cota no imgur — ver ExitPool.
+        ->default('mybb-migrator.image_exit_ips', '')
         // Pasta `uploads` do MyBB, se acessível: evita depender do site antigo.
         ->default('mybb-migrator.attachments_dir', '')
         // Segundos de validade do cache de contagens (COUNT(*) no MyBB custa

@@ -201,6 +201,45 @@ export default class ImagesCard extends Component<Attrs> {
           {this.numberField("image_retries", "images.retries")}
         </div>
         <div className="MmHint">{trans("images.host_delay_hint")}</div>
+
+        {this.exitIpsField()}
+      </div>
+    );
+  }
+
+  /**
+   * Os IPs por onde os downloads saem.
+   *
+   * Mora junto do ritmo de rede porque resolve o MESMO problema por outro lado:
+   * o intervalo por host faz o run esperar a cota do imgur; vários IPs dão
+   * várias cotas. Textarea, e não input: são endereços longos (proxy com
+   * usuário e senha passa fácil de 40 caracteres) e conferir a lista numa linha
+   * só é impossível.
+   */
+  private exitIpsField(): Mithril.Children {
+    const exits = (this.form.image_exit_ips ?? "")
+      .split(/[\s,;]+/)
+      .filter((ip) => ip !== "").length;
+
+    return (
+      <div className="MmField MmField--wide">
+        <label>
+          {trans("images.exit_ips")}
+          {exits > 0 && (
+            <span className="MmMuted"> — {trans("images.hosts_count", { count: exits })}</span>
+          )}
+        </label>
+        <textarea
+          className="FormControl MmHostsInput"
+          rows={3}
+          placeholder={"203.0.113.9\nsocks5://user:pass@proxy.exemplo:1080"}
+          title={trans("images.exit_ips")}
+          value={this.form.image_exit_ips ?? ""}
+          oninput={(e: InputEvent) =>
+            (this.form.image_exit_ips = (e.target as HTMLTextAreaElement).value)
+          }
+        />
+        <div className="MmHint">{trans("images.exit_ips_hint")}</div>
       </div>
     );
   }
@@ -218,6 +257,7 @@ export default class ImagesCard extends Component<Attrs> {
       image_max_dim: media.image_max_dim,
       image_host_delay: media.image_host_delay,
       image_retries: media.image_retries,
+      image_exit_ips: media.image_exit_ips,
       attachments_dir: media.attachments_dir,
     };
     this.seeded = true;

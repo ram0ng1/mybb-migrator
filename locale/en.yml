@@ -142,6 +142,15 @@ ramon-mybb-migrator:
         Spacing between requests to the same host, and how many times a
         rate-limited or timed-out download is retried (with backoff, honouring
         Retry-After). Raise the delay if you keep seeing HTTP 429 from imgur.
+      exit_ips: Exit IPs / proxies (optional)
+      exit_ips_hint: >-
+        One per line. Downloads are rotated over these addresses, and the rate
+        limit is tracked per host AND per IP — so each address keeps its own
+        quota at imgur instead of sharing one. A bare IP (203.0.113.9) binds the
+        source address of the connection and requires that IP to be configured
+        on this server; an address with a scheme or a port
+        (socks5://host:1080, user:pass@host:8080) is used as a proxy. Leave
+        empty to download from the server's own IP.
       attachments_dir: MyBB uploads folder (optional)
       attachments_dir_hint: >-
         Path to the MyBB “uploads” folder. When set, attachments are copied
@@ -269,6 +278,10 @@ ramon-mybb-migrator:
       limit_volume_none: no volume cap
       limit_per_file: "{count} MB per file"
       network_summary: "{retries} retry(ies) on transient failure, {delay} ms between requests to the same host, {timeout}s idle before giving up"
+      retrying: "↻ {url} — {error} · retry {attempt}/{of} in {wait}s"
+      retrying_via: "↻ {url} — {error} · via {exit} · retry {attempt}/{of} in {wait}s"
+      exit_down: "⚠ exit {exit} dropped from the rotation after repeated connection failures — {error}"
+      network_exits: "{count} exit IPs in rotation ({list})"
       optimizer_disabled: "off"
       optimizer_unavailable: "unavailable (no GD) — files are stored exactly as downloaded"
       optimizer_summary: "{format}, quality {quality}, max {size}, minimum gain {gain}%"

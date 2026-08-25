@@ -94,6 +94,11 @@ export interface MediaConfig {
   /** Ritmo de rede: ms entre requisições ao mesmo host e retentativas. */
   image_host_delay: number;
   image_retries: number;
+  /**
+   * IPs (ou proxies) de saída em rodízio, separados por vírgula. Vazio = o IP
+   * do próprio servidor.
+   */
+  image_exit_ips: string;
   /** O PHP do servidor sabe gravar WebP (GD com libwebp)? */
   webp_supported: boolean;
   attachments_dir: string;
@@ -187,6 +192,7 @@ export interface ConnectionPayload {
   image_max_dim?: string | number;
   image_host_delay?: string | number;
   image_retries?: string | number;
+  image_exit_ips?: string;
   attachments_dir?: string;
 }
 

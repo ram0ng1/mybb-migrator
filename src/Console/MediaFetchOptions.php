@@ -3,6 +3,7 @@
 namespace Ramon\MybbMigrator\Console;
 
 use Flarum\Settings\SettingsRepositoryInterface;
+use Ramon\MybbMigrator\Support\ExitPool;
 use Ramon\MybbMigrator\Support\ImageFetcher;
 use Ramon\MybbMigrator\Support\ImageOptimizer;
 use Symfony\Component\Console\Input\InputOption;
@@ -36,7 +37,8 @@ trait MediaFetchOptions
         if ($network) {
             $this
                 ->addOption('retries', null, InputOption::VALUE_REQUIRED, 'Retries for transient failures (HTTP 429/5xx, timeouts).')
-                ->addOption('host-delay', null, InputOption::VALUE_REQUIRED, 'Minimum delay between requests to the same host, in milliseconds.');
+                ->addOption('host-delay', null, InputOption::VALUE_REQUIRED, 'Minimum delay between requests to the same host, in milliseconds.')
+                ->addOption('exit-ips', null, InputOption::VALUE_REQUIRED, 'Comma-separated exit IPs or proxies to rotate downloads over (overrides the panel list).');
         }
 
         $this
@@ -57,14 +59,46 @@ trait MediaFetchOptions
         return $this->mediaIntOpt('host-delay', (int) ($settings->get('mybb-migrator.image_host_delay') ?? 350));
     }
 
+    /**
+     * Lista de IPs/proxies de saída: `--exit-ips` manda, senão a aba Imagens.
+     * Vazia = pool "direto", o comportamento de sempre.
+     */
+    protected function fetchExitPool(SettingsRepositoryInterface $settings): ExitPool
+    {
+        $raw = (string) ($this->input->getOption('exit-ips') ?? '');
+
+        if (trim($raw) === '') {
+            $raw = (string) ($settings->get('mybb-migrator.image_exit_ips') ?? '');
+        }
+
+        return ExitPool::fromList($raw);
+    }
+
     protected function buildFetcher(SettingsRepositoryInterface $settings, int $timeout, int $maxBytes): ImageFetcher
     {
-        return new ImageFetcher(
+        $pool = $this->fetchExitPool($settings);
+
+        return (new ImageFetcher(
             $timeout,
             $maxBytes,
             $this->fetchRetries($settings),
             $this->fetchHostDelay($settings),
-        );
+            $pool,
+        ))
+            ->onRetry(function (array $retry) use ($pool): void {
+                // Sem esta linha, um 429 do imgur com backoff de 30 s parece o
+                // comando ter travado — inclusive no console do painel, onde
+                // não existe um Ctrl+C para ver se ainda há vida. Com rodízio
+                // ligado, saber POR QUAL IP a tentativa saiu é metade do
+                // diagnóstico.
+                $this->info($this->trans(
+                    $pool->rotates() ? 'common.retrying_via' : 'common.retrying',
+                    $retry
+                ));
+            })
+            ->onExitDown(function (array $down): void {
+                $this->info($this->trans('common.exit_down', $down));
+            });
     }
 
     /**
@@ -95,11 +129,23 @@ trait MediaFetchOptions
      */
     protected function describeFetch(SettingsRepositoryInterface $settings, int $timeout): string
     {
-        return $this->trans('common.network_summary', [
+        $summary = $this->trans('common.network_summary', [
             'retries' => $this->fetchRetries($settings),
             'delay'   => $this->fetchHostDelay($settings),
             'timeout' => $timeout,
         ]);
+
+        // O rodízio só entra no resumo quando existe: "1 IP de saída (direto)"
+        // seria uma linha a mais para dizer que nada mudou.
+        $pool = $this->fetchExitPool($settings);
+        if ($pool->rotates()) {
+            $summary .= ' · ' . $this->trans('common.network_exits', [
+                'count' => $pool->count(),
+                'list'  => $pool->describe(),
+            ]);
+        }
+
+        return $summary;
     }
 
     /**

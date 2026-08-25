@@ -143,6 +143,15 @@ ramon-mybb-migrator:
         Espaçamento entre requisições ao MESMO host e quantas vezes um download
         recusado ou lento é retentado (com backoff, respeitando o Retry-After).
         Aumente o intervalo se o imgur insistir em HTTP 429.
+      exit_ips: IPs de saída / proxies (opcional)
+      exit_ips_hint: >-
+        Um por linha. Os downloads saem por esses endereços em rodízio, e o
+        limite de requisições passa a ser contado por host E por IP — cada
+        endereço tem a sua cota no imgur em vez de todos dividirem uma só. Um IP
+        puro (203.0.113.9) fixa o endereço de ORIGEM da conexão e exige que esse
+        IP esteja configurado neste servidor; um endereço com esquema ou porta
+        (socks5://host:1080, usuario:senha@host:8080) é usado como PROXY. Vazio,
+        os downloads saem pelo IP do próprio servidor.
       attachments_dir: Pasta uploads do MyBB (opcional)
       attachments_dir_hint: >-
         Caminho da pasta “uploads” do MyBB. Preenchida, os anexos são copiados
@@ -270,6 +279,10 @@ ramon-mybb-migrator:
       limit_volume_none: sem limite de volume
       limit_per_file: "{count} MB por arquivo"
       network_summary: "{retries} retentativa(s) em falha transitória, {delay} ms entre requisições ao mesmo host, {timeout}s sem tráfego para desistir"
+      retrying: "↻ {url} — {error} · retentativa {attempt}/{of} em {wait}s"
+      retrying_via: "↻ {url} — {error} · por {exit} · retentativa {attempt}/{of} em {wait}s"
+      exit_down: "⚠ IP de saída {exit} saiu do rodízio após falhas seguidas de conexão — {error}"
+      network_exits: "{count} IPs de saída em rodízio ({list})"
       optimizer_disabled: desligada
       optimizer_unavailable: "indisponível (sem GD) — arquivos gravados como vieram"
       optimizer_summary: "{format}, qualidade {quality}, máx {size}, ganho mínimo {gain}%"
