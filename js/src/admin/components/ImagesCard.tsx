@@ -79,7 +79,7 @@ export default class ImagesCard extends Component<Attrs> {
           <textarea
             className="FormControl MmHostsInput"
             rows={4}
-            placeholder="i.imgur.com, damnfineshave.com"
+            placeholder="i.imgur.com, forum-antigo.exemplo.com"
             title={trans("images.hosts")}
             value={this.form.image_hosts ?? ""}
             oninput={(e: InputEvent) =>

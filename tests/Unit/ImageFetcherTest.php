@@ -123,6 +123,16 @@ class ImageFetcherTest extends TestCase
         $this->assertSame('imgur_cap', $notices[0]['kind']);
     }
 
+    /**
+     * TLS verificado por padrão: desligar tem de ser um pedido explícito
+     * (--insecure), nunca o estado inicial.
+     */
+    public function test_tls_verification_is_on_unless_explicitly_disabled(): void
+    {
+        $this->assertTrue((new ImageFetcher())->verifiesTls());
+        $this->assertFalse((new ImageFetcher(verifyTls: false))->verifiesTls());
+    }
+
     public function test_an_unconfigured_imgur_client_is_ignored(): void
     {
         $fetcher = (new ImageFetcher())->withImgur(new ImgurClient(''));

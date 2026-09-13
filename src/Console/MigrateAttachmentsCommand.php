@@ -191,7 +191,10 @@ class MigrateAttachmentsCommand extends AbstractCommand
              ORDER BY aid"
         );
 
-        $map = $this->loadMap();
+        // Sem carregar o mapa inteiro: cada anexo consulta a sua linha pelo
+        // índice único (uma leitura de chave por anexo, contra uma cópia de
+        // disco ou um download — irrelevante no tempo, decisivo na memória).
+        $map = [];
 
         while ($row = $rows->fetch()) {
             $aid = (int) $row['aid'];
@@ -201,7 +204,7 @@ class MigrateAttachmentsCommand extends AbstractCommand
 
             $key = 'mybb:attachment:' . $aid;
             $hash = sha1($key);
-            $known = $map[$hash] ?? null;
+            $known = $map[$hash] ?? $this->lookupMap($hash);
 
             $post = $this->db->table('posts')->select('id', 'user_id', 'discussion_id', 'content')->find($pid);
             if ($post === null) {
@@ -558,38 +561,39 @@ class MigrateAttachmentsCommand extends AbstractCommand
             $this->error($this->trans('common.map_write_failed', ['key' => $key, 'error' => $e->getMessage()]));
         }
 
-        $map[$hash] = [
-            'status'    => (string) ($data['status'] ?? 'ok'),
-            'local_url' => $data['local_url'] ?? null,
-            'mime'      => $data['mime'] ?? null,
-        ];
+        // Nada fica em memória: o banco acabou de receber a linha, e cada aid
+        // passa por aqui uma vez só — guardar seria acumular o run inteiro.
+        unset($map[$hash]);
     }
 
     /**
-     * @return array<string, array<string, mixed>>
+     * A linha do mapa de UM anexo, ou null se ele nunca foi processado.
+     *
+     * @return null|array<string, mixed>
      */
-    private function loadMap(): array
+    private function lookupMap(string $hash): ?array
     {
-        $map = [];
-
         try {
-            $rows = $this->db->table('mybb_migrated_images')
+            $row = $this->db->table('mybb_migrated_images')
+                ->where('url_hash', $hash)
                 ->where('kind', 'attachment')
-                ->select('url_hash', 'status', 'local_url', 'mime')
-                ->cursor();
-
-            foreach ($rows as $row) {
-                $map[(string) $row->url_hash] = [
-                    'status'    => (string) $row->status,
-                    'local_url' => $row->local_url,
-                    'mime'      => $row->mime,
-                ];
-            }
+                ->select('status', 'local_url', 'mime')
+                ->first();
         } catch (\Throwable $e) {
             $this->error($this->trans('common.map_missing', ['error' => $e->getMessage()]));
+
+            return null;
         }
 
-        return $map;
+        if ($row === null) {
+            return null;
+        }
+
+        return [
+            'status'    => (string) $row->status,
+            'local_url' => $row->local_url,
+            'mime'      => $row->mime,
+        ];
     }
 
     private function intOpt(string $name, int $default): int

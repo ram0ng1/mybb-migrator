@@ -73,6 +73,12 @@ class ProcessRunner
             'cd /d "' . $base . '"',
             '"' . $php . '" "' . $flarum . '" mybb:gui-run --steps=' . $steps
                 . ' --extra-b64=' . $extraB64 . ' > "' . $log . '" 2>&1',
+            // O .bat se apaga ao terminar. Tem de ser a ÚLTIMA linha: o cmd lê
+            // o arquivo por deslocamento, e o `(goto) 2>nul` encerra o contexto
+            // antes do `del`, senão ele tentaria ler a linha seguinte de um
+            // arquivo que não existe mais. Apagar daqui do PHP, logo após o
+            // `start`, seria uma corrida com o cmd que ainda nem o abriu.
+            '(goto) 2>nul & del "%~f0"',
         ];
         @file_put_contents($bat, implode("\r\n", $lines) . "\r\n");
 

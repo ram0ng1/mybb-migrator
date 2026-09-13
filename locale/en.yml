@@ -114,7 +114,7 @@ ramon-mybb-migrator:
       hosts_count: "{count} host(s)"
       hosts_hint: >-
         Comma-separated hosts or URL prefixes, e.g. “i.imgur.com,
-        damnfineshave.com”. A bare host also matches its subdomains.
+        old-forum.example.com”. A bare host also matches its subdomains.
         Auto-detection fills this with every host found in your posts — prune it
         if you want to leave some out. Leaving it empty and ticking all-hosts on
         the step takes everything external, including hosts not in any post yet.
@@ -296,6 +296,7 @@ ramon-mybb-migrator:
       exit_down: "⚠ exit {exit} dropped from the rotation after repeated connection failures — {error}"
       network_exits: "{count} exit IPs in rotation ({list})"
       network_defer: "unreachable hosts deferred to the end of the run"
+      network_insecure: "⚠ TLS certificate verification OFF (--insecure)"
       network_imgur: "imgur API on ({used}/{cap} calls used today)"
       network_imgur_uncapped: "imgur API on ({used} calls today, no cap)"
       notice_host_tripped: "⛔ {host} is not answering ({error}) — the rest of its URLs are skipped for this run and retried at the end"

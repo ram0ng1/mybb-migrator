@@ -235,8 +235,11 @@ class MigrateImagesCommand extends AbstractCommand
             $this->info($this->trans('images.relink_only'));
         }
 
-        $map = $this->loadMap();
-        $this->info($this->trans('images.map_known', ['count' => count($map)]));
+        // O mapa NÃO é carregado inteiro: com centenas de milhares de URLs ele
+        // passaria da memory_limit antes do primeiro post. Cada página de posts
+        // busca só as linhas das URLs que ela contém (ver loadMapFor()).
+        $this->info($this->trans('images.map_known', ['count' => $this->mapCount()]));
+        $map = [];
 
         $query = $this->db->table('posts')
             ->select('id', 'user_id', 'discussion_id', 'content')
@@ -270,6 +273,10 @@ class MigrateImagesCommand extends AbstractCommand
             &$map, &$stop, $fetcher, $optimizer, $dryRun, $relinkOnly, $retryFailed,
             $limit, $budgetBytes, $maxPosts, $allHosts, $hosts, $total
         ): bool {
+            // Só as linhas do mapa desta página. O que remember() gravar durante
+            // a página fica em $map até a próxima — e aí volta do banco.
+            $map = $this->loadMapFor($rows);
+
             foreach ($rows as $row) {
                 if ($stop) {
                     return false;
@@ -734,26 +741,66 @@ class MigrateImagesCommand extends AbstractCommand
         }
 
         $map[$hash] = [
-            'status'    => (string) ($data['status'] ?? 'ok'),
-            'local_url' => $data['local_url'] ?? null,
+            'status'     => (string) ($data['status'] ?? 'ok'),
+            'local_url'  => $data['local_url'] ?? null,
+            'local_name' => $data['local_name'] ?? null,
+            'file_id'    => $data['file_id'] ?? null,
         ];
     }
 
+    /** Quantas URLs o mapa já conhece (só para a linha de abertura). */
+    private function mapCount(): int
+    {
+        try {
+            return (int) $this->db->table('mybb_migrated_images')->count();
+        } catch (\Throwable $e) {
+            $this->error($this->trans('common.map_missing', ['error' => $e->getMessage()]));
+
+            return 0;
+        }
+    }
+
     /**
-     * Mapa url_hash => {status, local_url} das URLs já processadas.
+     * Linhas do mapa para as URLs de UMA página de posts, indexadas por
+     * url_hash. Uma consulta por página (`WHERE url_hash IN (...)` sobre o
+     * índice único), e a memória fica proporcional à página, não à tabela.
      *
+     * Traz também `local_name` e `file_id`: é o que linkKnown() precisa para
+     * vincular ao post uma imagem baixada num run anterior.
+     *
+     * @param iterable<object> $rows
      * @return array<string, array<string, mixed>>
      */
-    private function loadMap(): array
+    private function loadMapFor(iterable $rows): array
     {
+        $hashes = [];
+        foreach ($rows as $row) {
+            foreach ($this->extractSources((string) $row->content) as $rawUrl) {
+                $hashes[sha1($rawUrl)] = true;
+            }
+        }
+
+        if ($hashes === []) {
+            return [];
+        }
+
         $map = [];
 
         try {
-            foreach ($this->db->table('mybb_migrated_images')->select('url_hash', 'status', 'local_url')->cursor() as $row) {
-                $map[(string) $row->url_hash] = [
-                    'status'    => (string) $row->status,
-                    'local_url' => $row->local_url,
-                ];
+            foreach (array_chunk(array_keys($hashes), 500) as $slice) {
+                $found = $this->db->table('mybb_migrated_images')
+                    ->whereIn('url_hash', $slice)
+                    ->select('url_hash', 'status', 'local_url', 'local_name', 'file_id')
+                    ->get();
+
+                foreach ($found as $row) {
+                    $map[(string) $row->url_hash] = [
+                        'status'     => (string) $row->status,
+                        'local_url'  => $row->local_url,
+                        'local_name' => $row->local_name,
+                        'file_id'    => $row->file_id,
+                    ];
+                }
             }
         } catch (\Throwable $e) {
             $this->error($this->trans('common.map_missing', ['error' => $e->getMessage()]));
