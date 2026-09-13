@@ -42,7 +42,8 @@ trait MediaFetchOptions
                 ->addOption('retries', null, InputOption::VALUE_REQUIRED, 'Retries for transient failures (HTTP 429/5xx, timeouts).')
                 ->addOption('host-delay', null, InputOption::VALUE_REQUIRED, 'Minimum delay between requests to the same host, in milliseconds.')
                 ->addOption('exit-ips', null, InputOption::VALUE_REQUIRED, 'Comma-separated exit IPs or proxies to rotate downloads over (overrides the panel list).')
-                ->addOption('no-defer', null, InputOption::VALUE_NONE, 'Retry connection failures (DNS/connect) inline instead of deferring those URLs to the end of the run.');
+                ->addOption('no-defer', null, InputOption::VALUE_NONE, 'Retry connection failures (DNS/connect) inline instead of deferring those URLs to the end of the run.')
+                ->addOption('insecure', null, InputOption::VALUE_NONE, 'Skip TLS certificate verification (only for hosts with a broken certificate chain; anyone on the network path could then replace the images).');
         }
 
         if ($network && $imgur) {
@@ -120,6 +121,12 @@ trait MediaFetchOptions
         return ! ($this->input->hasOption('no-defer') && $this->input->getOption('no-defer'));
     }
 
+    /** Verificar certificados TLS? Sempre, a menos de --insecure explícito. */
+    protected function fetchVerifiesTls(): bool
+    {
+        return ! ($this->input->hasOption('insecure') && $this->input->getOption('insecure'));
+    }
+
     protected function buildFetcher(SettingsRepositoryInterface $settings, int $timeout, int $maxBytes): ImageFetcher
     {
         $pool = $this->fetchExitPool($settings);
@@ -130,6 +137,7 @@ trait MediaFetchOptions
             $this->fetchRetries($settings),
             $this->fetchHostDelay($settings),
             $pool,
+            $this->fetchVerifiesTls(),
         ))
             ->withImgur($this->imgurClient($settings))
             ->deferConnectionFailures($this->fetchDefers())
@@ -206,6 +214,11 @@ trait MediaFetchOptions
 
         if ($this->fetchDefers()) {
             $summary .= ' · ' . $this->trans('common.network_defer');
+        }
+
+        // Só aparece quando está DESLIGADA: é o estado que merece ser visto.
+        if (! $this->fetchVerifiesTls()) {
+            $summary .= ' · ' . $this->trans('common.network_insecure');
         }
 
         // Idem para o imgur: só aparece quando há credencial, e aí diz quanto

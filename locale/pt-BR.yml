@@ -115,7 +115,7 @@ ramon-mybb-migrator:
       hosts_count: "{count} host(s)"
       hosts_hint: >-
         Hosts ou prefixos de URL separados por vírgula, ex.: “i.imgur.com,
-        damnfineshave.com”. Um host solto também casa com os subdomínios. A
+        forum-antigo.exemplo.com”. Um host solto também casa com os subdomínios. A
         detecção preenche isto com TODOS os hosts achados nos seus posts — pode
         podar o que não quiser. Deixar vazio e marcar all-hosts no passo pega
         tudo que é externo, inclusive hosts que ainda não aparecem em post algum.
@@ -297,6 +297,7 @@ ramon-mybb-migrator:
       exit_down: "⚠ IP de saída {exit} saiu do rodízio após falhas seguidas de conexão — {error}"
       network_exits: "{count} IPs de saída em rodízio ({list})"
       network_defer: "hosts inalcançáveis adiados para o fim do run"
+      network_insecure: "⚠ verificação de certificado TLS DESLIGADA (--insecure)"
       network_imgur: "API do imgur ligada ({used}/{cap} chamadas usadas hoje)"
       network_imgur_uncapped: "API do imgur ligada ({used} chamadas hoje, sem teto)"
       notice_host_tripped: "⛔ {host} não está respondendo ({error}) — as demais URLs dele são puladas neste run e retentadas no fim"

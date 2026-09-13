@@ -200,9 +200,38 @@ final class ImageFetcher
         private int $retries = 3,
         int $hostDelayMs = 250,
         ?ExitPool $exits = null,
+        /**
+         * Verificar o certificado TLS do host. Ligado por padrão: sem isso, quem
+         * intercepta a rede durante a migração escolhe o que vai parar na pasta
+         * de assets do fórum. CDNs antigas com cadeia quebrada falham com erro
+         * claro (curl 60) e o admin decide se roda com `--insecure`.
+         */
+        private bool $verifyTls = true,
     ) {
         $this->hostDelay = max(0, $hostDelayMs) / 1000;
         $this->exits = $exits ?? ExitPool::direct();
+    }
+
+    public function verifiesTls(): bool
+    {
+        return $this->verifyTls;
+    }
+
+    /**
+     * Pacote de CAs para o cURL quando o PHP não traz um (comum no Windows,
+     * onde sem isto TODA conexão https falha com "unable to get local issuer").
+     * O Flarum depende do composer/ca-bundle via Guzzle; se ele estiver
+     * disponível, usamos.
+     */
+    private function caBundle(): ?string
+    {
+        if (! class_exists(\Composer\CaBundle\CaBundle::class)) {
+            return null;
+        }
+
+        $path = \Composer\CaBundle\CaBundle::getSystemCaRootBundlePath();
+
+        return is_string($path) && is_file($path) ? $path : null;
     }
 
     public function exits(): ExitPool
@@ -809,10 +838,11 @@ final class ImageFetcher
                 $headers === [] ? ['Accept: image/avif,image/webp,image/*,*/*;q=0.8'] : [],
                 $headers
             ),
-            // Fóruns antigos e CDNs de imagem frequentemente têm cadeia de
-            // certificados quebrada; o conteúdo é validado por magic bytes.
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 0,
+            // Verificação TLS ligada por padrão (ver o construtor). Validar o
+            // conteúdo por magic bytes garante que é imagem — não que é A
+            // imagem que estava lá.
+            CURLOPT_SSL_VERIFYPEER => $this->verifyTls,
+            CURLOPT_SSL_VERIFYHOST => $this->verifyTls ? 2 : 0,
             CURLOPT_HEADER         => false,
             CURLOPT_RETURNTRANSFER => false,
             CURLOPT_HEADERFUNCTION => function ($_ch, string $line) use (&$retryAfter, &$headerStatus, &$seen): int {
@@ -849,6 +879,10 @@ final class ImageFetcher
             curl_setopt($ch, CURLOPT_IPRESOLVE, defined('CURL_IPRESOLVE_V4') ? CURL_IPRESOLVE_V4 : 1);
         }
 
+        if ($this->verifyTls && ($ca = $this->caBundle()) !== null) {
+            curl_setopt($ch, CURLOPT_CAINFO, $ca);
+        }
+
         // A rotação de IP se resume a estas duas linhas: ou amarramos o
         // endereço de ORIGEM da conexão, ou mandamos tudo por um proxy.
         if (($exit['kind'] ?? 'direct') === 'interface') {
@@ -876,6 +910,13 @@ final class ImageFetcher
         if ($errno !== 0) {
             $retriable = in_array($errno, self::RETRIABLE_CURL, true)
                 || in_array($errno, self::EXIT_FAULT_CURL, true);
+
+            // 60 = certificado inválido/cadeia quebrada, 51/58/83 = idem em outras
+            // camadas: falha DEFINITIVA e com o caminho de saída no texto —
+            // retentar não muda o certificado do host.
+            if (in_array($errno, [51, 58, 60, 83], true)) {
+                return $this->err('curl: ' . $error . ' (certificado TLS inválido; use --insecure para aceitar assim mesmo)', $final, false, 0, null, '', $errno, headers: $seen);
+            }
 
             return $this->err('curl: ' . $error, $final, $retriable, 0, null, $full, $errno, headers: $seen);
         }
@@ -936,7 +977,11 @@ final class ImageFetcher
         $ctx = stream_context_create([
             'http'   => $http,
             'socket' => $socket,
-            'ssl'    => ['verify_peer' => false, 'verify_peer_name' => false],
+            'ssl'    => array_filter([
+                'verify_peer'      => $this->verifyTls,
+                'verify_peer_name' => $this->verifyTls,
+                'cafile'           => $this->verifyTls ? $this->caBundle() : null,
+            ], fn ($v) => $v !== null),
         ]);
 
         $handle = @fopen($url, 'rb', false, $ctx);

@@ -333,6 +333,7 @@ php flarum mybb:optimize-media --force --limit=50
 | `--imgur-client-id=ID` | imgur API Client-ID (overrides the panel). Each imgur image is resolved with one authenticated API call instead of guessing extensions at `i.imgur.com`. |
 | `--imgur-daily-cap=N` | Maximum imgur API calls per UTC day, persisted across runs (default 10000; `0` = no cap). Once reached, remaining imgur URLs are deferred to the next day. |
 | `--no-defer` | Retry DNS/connection failures inline instead of pushing those URLs to the end of the run. |
+| `--insecure` | Skip TLS certificate verification. Off by default: a host with a broken chain fails with a clear `curl 60` error instead of being silently accepted, because with verification off anyone on the network path could replace the images being imported. |
 | `--locale=xx` | Language of this run's output (e.g. `pt-BR`). Defaults to the panel setting, then to the forum's `default_locale`. |
 
 Scan order: **newest discussions first** (by discussion id, newest posts first
@@ -352,6 +353,9 @@ What makes re-running safe:
   failed with `429`/timeout are queued again.)
 - Local filenames are a hash of the source URL, so the same remote image always
   maps to the same local file; nothing is ever downloaded twice.
+- The map is never loaded whole into memory: each page of 200 posts fetches
+  only the rows for the URLs it contains, so a table with a million URLs costs
+  the same RAM as one with a hundred.
 - After `mybb:rebuild-formatting` (which re-derives posts from MyBB and brings
   the remote URLs back), run `php flarum mybb:images --force --relink-only` to
   re-apply the whole map in seconds.
