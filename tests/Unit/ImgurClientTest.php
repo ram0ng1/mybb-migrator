@@ -75,9 +75,11 @@ class ImgurClientTest extends TestCase
     public function test_the_remote_client_remaining_header_ends_the_day(): void
     {
         $client = new ImgurClient('id', 10000);
-        $client->observe(['x-ratelimit-clientremaining' => '0', 'x-ratelimit-userremaining' => '400']);
+        $client->observe(['x-ratelimit-clientremaining' => '0', 'x-ratelimit-clientreset' => '33529', 'x-ratelimit-userremaining' => '400']);
 
         $this->assertTrue($client->exhausted());
+        $this->assertTrue($client->remoteExhausted(), 'foi o imgur quem disse, não o nosso teto');
+        $this->assertSame(33529, $client->remoteReset());
 
         // O limite por IP (User) NÃO encerra o dia — volta em uma hora, e é
         // assunto do backoff do fetcher.

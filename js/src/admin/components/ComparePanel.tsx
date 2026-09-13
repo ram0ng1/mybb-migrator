@@ -41,7 +41,9 @@ export default class ComparePanel extends Component<Attrs> {
             placeholder={trans("compare.pid_placeholder")}
             title={trans("compare.pid_placeholder")}
             value={this.pid}
-            oninput={(e: InputEvent) => (this.pid = (e.target as HTMLInputElement).value)}
+            oninput={(e: InputEvent) =>
+              (this.pid = (e.target as HTMLInputElement).value)
+            }
             onkeydown={(e: KeyboardEvent) => {
               if (e.key === "Enter") this.run(false);
             }}
@@ -54,16 +56,22 @@ export default class ComparePanel extends Component<Attrs> {
           >
             {trans("compare.compare")}
           </Button>
-          <Button className="Button" loading={this.loading} onclick={() => this.run(true)}>
+          <Button
+            className="Button"
+            loading={this.loading}
+            onclick={() => this.run(true)}
+          >
             {trans("compare.random")}
           </Button>
         </div>
 
-        {this.result
-          ? this.resultView(this.result)
-          : this.attempted && !this.loading
-            ? <div className="MmAlert MmAlert--warn">{trans("compare.none_found")}</div>
-            : null}
+        {this.result ? (
+          this.resultView(this.result)
+        ) : this.attempted && !this.loading ? (
+          <div className="MmAlert MmAlert--warn">
+            {trans("compare.none_found")}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -74,7 +82,9 @@ export default class ComparePanel extends Component<Attrs> {
         <div className="MmCompare-meta">
           <strong>pid {r.pid}</strong>
           {r.number ? <span className="MmMuted"> · #{r.number}</span> : null}
-          {r.title ? <span className="MmCompare-title"> · {r.title}</span> : null}
+          {r.title ? (
+            <span className="MmCompare-title"> · {r.title}</span>
+          ) : null}
         </div>
 
         <div className="MmCompare-cols">
@@ -91,7 +101,12 @@ export default class ComparePanel extends Component<Attrs> {
         <div className="MmCompare-colhead">
           <span>{trans("compare.old")}</span>
           {r.old_url ? (
-            <a href={r.old_url} target="_blank" rel="noopener noreferrer" className="MmCompare-open">
+            <a
+              href={r.old_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="MmCompare-open"
+            >
               {trans("compare.open_old")} ↗
             </a>
           ) : null}
@@ -150,7 +165,11 @@ export default class ComparePanel extends Component<Attrs> {
       );
     }
 
-    return <div className="MmAlert MmAlert--warn">{trans("compare.old_unavailable")}</div>;
+    return (
+      <div className="MmAlert MmAlert--warn">
+        {trans("compare.old_unavailable")}
+      </div>
+    );
   }
 
   private flarumCol(r: CompareResult): Mithril.Children {
@@ -163,7 +182,9 @@ export default class ComparePanel extends Component<Attrs> {
           {r.found_flarum && r.flarum_html ? (
             <div className="MmCompare-flarum">{m.trust(r.flarum_html)}</div>
           ) : (
-            <div className="MmAlert MmAlert--warn">{trans("compare.not_migrated")}</div>
+            <div className="MmAlert MmAlert--warn">
+              {trans("compare.not_migrated")}
+            </div>
           )}
         </div>
       </div>

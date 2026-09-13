@@ -48,7 +48,9 @@ export default class ProgressOverview extends Component<Attrs> {
             {loaded && (
               <span className="MmMuted">
                 {trans("progress.measured_at", {
-                  time: new Date((status.countsAt as number) * 1000).toLocaleTimeString(),
+                  time: new Date(
+                    (status.countsAt as number) * 1000,
+                  ).toLocaleTimeString(),
                 })}
               </span>
             )}
@@ -64,11 +66,14 @@ export default class ProgressOverview extends Component<Attrs> {
 
         {!loaded && state.countsLoading && (
           <p className="MmMuted">
-            <LoadingIndicator display="inline" size="small" /> {trans("progress.loading")}
+            <LoadingIndicator display="inline" size="small" />{" "}
+            {trans("progress.loading")}
           </p>
         )}
 
-        {loaded && !hasSource && <p className="MmMuted">{trans("progress.no_source")}</p>}
+        {loaded && !hasSource && (
+          <p className="MmMuted">{trans("progress.no_source")}</p>
+        )}
 
         <div className="MmProgress-rows">
           {ROWS.map((row) => this.row(row, source, target, hasSource))}
@@ -93,7 +98,9 @@ export default class ProgressOverview extends Component<Attrs> {
 
     return (
       <div className="MmProgress-row">
-        <div className="MmProgress-label">{trans(`progress.entity.${row.key}`)}</div>
+        <div className="MmProgress-label">
+          {trans(`progress.entity.${row.key}`)}
+        </div>
         <div className="MmProgress-bar">
           <div className="MmProgress-fill" style={{ width: `${pct}%` }} />
         </div>

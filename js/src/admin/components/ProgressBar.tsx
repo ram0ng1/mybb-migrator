@@ -26,12 +26,17 @@ export default class ProgressBar extends Component<Attrs> {
     if (!p) return null;
 
     const known = typeof p.total === "number" && p.total > 0;
-    const pct = known ? Math.min(100, Math.round((p.done / (p.total as number)) * 100)) : 0;
+    const pct = known
+      ? Math.min(100, Math.round((p.done / (p.total as number)) * 100))
+      : 0;
 
     return (
       <div className={`MmBar ${known ? "" : "MmBar--indeterminate"}`}>
         <div className="MmBar-track">
-          <div className="MmBar-fill" style={known ? { width: `${pct}%` } : undefined} />
+          <div
+            className="MmBar-fill"
+            style={known ? { width: `${pct}%` } : undefined}
+          />
         </div>
         <div className="MmBar-text">
           {known

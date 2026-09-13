@@ -123,7 +123,11 @@ export default class MigratorState {
   async detectMedia(): Promise<DetectResult | null> {
     this.busy = true;
     const res = await apiCall<DetectResult>(
-      { method: "POST", url: `${apiUrl()}/mybb-migrator/detect-media`, body: { apply: true } },
+      {
+        method: "POST",
+        url: `${apiUrl()}/mybb-migrator/detect-media`,
+        body: { apply: true },
+      },
       { errorKey: "ramon-mybb-migrator.admin.images.detect_failed" },
     );
     this.busy = false;
@@ -165,7 +169,11 @@ export default class MigratorState {
   async saveConnection(payload: ConnectionPayload): Promise<unknown> {
     this.busy = true;
     const res = await apiCall(
-      { method: "POST", url: `${apiUrl()}/mybb-migrator/connection`, body: payload },
+      {
+        method: "POST",
+        url: `${apiUrl()}/mybb-migrator/connection`,
+        body: payload,
+      },
       { errorKey: "ramon-mybb-migrator.admin.connection.save_failed" },
     );
     this.busy = false;
@@ -196,7 +204,9 @@ export default class MigratorState {
     if (res?.note === "all-done") {
       app.alerts.show(
         { type: "success" },
-        extractText(app.translator.trans("ramon-mybb-migrator.admin.run.all_done")),
+        extractText(
+          app.translator.trans("ramon-mybb-migrator.admin.run.all_done"),
+        ),
       );
     }
     await this.refresh(false);
@@ -218,7 +228,10 @@ export default class MigratorState {
     return res;
   }
 
-  async compare(opts: { pid?: number; random?: boolean }): Promise<CompareResult | null> {
+  async compare(opts: {
+    pid?: number;
+    random?: boolean;
+  }): Promise<CompareResult | null> {
     const qs = opts.random
       ? "random=1"
       : `pid=${encodeURIComponent(String(opts.pid ?? ""))}`;

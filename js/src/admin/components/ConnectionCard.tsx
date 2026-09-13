@@ -136,7 +136,9 @@ export default class ConnectionCard extends Component<Attrs> {
           title={trans(`connection.fields.${name}`)}
           value={(this.form[name] as string | number | undefined) ?? ""}
           oninput={(e: InputEvent) =>
-            ((this.form[name] as unknown) = (e.target as HTMLInputElement).value)
+            ((this.form[name] as unknown) = (
+              e.target as HTMLInputElement
+            ).value)
           }
         />
       </div>
@@ -151,7 +153,9 @@ export default class ConnectionCard extends Component<Attrs> {
           className="FormControl"
           type="password"
           placeholder={
-            isSet ? trans("connection.password_set") : trans("connection.password_empty")
+            isSet
+              ? trans("connection.password_set")
+              : trans("connection.password_empty")
           }
           value={this.form.password ?? ""}
           oninput={(e: InputEvent) =>
@@ -167,7 +171,11 @@ export default class ConnectionCard extends Component<Attrs> {
     php_autodetected: boolean;
   }): Mithril.Children {
     if (!conn.php_resolved) {
-      return <div className="MmHint MmHint--error">{trans("connection.php_none")}</div>;
+      return (
+        <div className="MmHint MmHint--error">
+          {trans("connection.php_none")}
+        </div>
+      );
     }
     const tested = this.testResult?.php;
     const cls = tested ? (tested.ok ? "MmHint--ok" : "MmHint--error") : "";
@@ -226,7 +234,8 @@ export default class ConnectionCard extends Component<Attrs> {
           {pf.extensions.map((ext) =>
             this.check(
               ext.enabled,
-              ext.id + (ext.required ? ` (${trans("preflight.required")})` : ""),
+              ext.id +
+                (ext.required ? ` (${trans("preflight.required")})` : ""),
               ext.required && !ext.enabled,
             ),
           )}

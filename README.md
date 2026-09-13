@@ -335,6 +335,10 @@ php flarum mybb:optimize-media --force --limit=50
 | `--no-defer` | Retry DNS/connection failures inline instead of pushing those URLs to the end of the run. |
 | `--locale=xx` | Language of this run's output (e.g. `pt-BR`). Defaults to the panel setting, then to the forum's `default_locale`. |
 
+Scan order: **newest discussions first** (by discussion id, newest posts first
+inside each), so a run with a budget localizes what readers open today before
+it reaches the threads from 2010.
+
 What makes re-running safe:
 
 - Every URL processed is recorded in **`mybb_migrated_images`**. Successful ones
@@ -383,7 +387,8 @@ imgur with an API Client-ID (Images tab, or `--imgur-client-id`):
   runs and processes; the Images tab shows how much of today's quota is used.
   Once reached, the remaining imgur URLs are stored as `deferred` and picked up
   by a run on the next day. `X-RateLimit-ClientRemaining: 0` from imgur ends
-  the day early as well.
+  the day early as well — and that header is also imgur's answer to an
+  **unknown Client-ID** (HTTP 429), so the console says which of the two it was.
 - imgur's API does not answer over IPv6: those calls force IPv4 and skip IPv6
   exit interfaces from the rotation.
 

@@ -125,13 +125,19 @@ export default class StepList extends Component<Attrs> {
             loading={isThisRunning}
             onclick={() => this.run(def)}
           >
-            {trans(def.options.includes("dry-run") && this.opts[def.key]?.["dry-run"] ? "steps.dry_run" : "steps.run")}
+            {trans(
+              def.options.includes("dry-run") && this.opts[def.key]?.["dry-run"]
+                ? "steps.dry_run"
+                : "steps.run",
+            )}
           </Button>
           <Button
             className="Button Button--text Button--sm"
             onclick={() => this.toggleLog(def.key, isThisRunning)}
           >
-            {this.expanded[def.key] ? trans("steps.hide_log") : trans("steps.show_log")}
+            {this.expanded[def.key]
+              ? trans("steps.hide_log")
+              : trans("steps.show_log")}
           </Button>
           {(status === "done" || status === "failed") && (
             <Button
@@ -150,7 +156,11 @@ export default class StepList extends Component<Attrs> {
         <div className="MmStep-log">
           {this.expanded[def.key] ? (
             <LiveConsole
-              text={isThisRunning ? this.attrs.state.status?.runningLog ?? "" : this.logs[def.key] ?? ""}
+              text={
+                isThisRunning
+                  ? (this.attrs.state.status?.runningLog ?? "")
+                  : (this.logs[def.key] ?? "")
+              }
               follow={isThisRunning}
             />
           ) : null}
@@ -166,7 +176,9 @@ export default class StepList extends Component<Attrs> {
       <span className={`MmBadge MmBadge--${cls}`}>
         {status === "running" && <span className="MmSpinner" />}
         {label}
-        {status === "failed" && st?.exit_code != null ? ` (${st.exit_code})` : ""}
+        {status === "failed" && st?.exit_code != null
+          ? ` (${st.exit_code})`
+          : ""}
       </span>
     );
   }
@@ -252,7 +264,10 @@ export default class StepList extends Component<Attrs> {
   }
 
   private run(def: StepDef): void {
-    if (def.dangerous && !confirm(trans("steps.confirm_dangerous", { name: def.command }))) {
+    if (
+      def.dangerous &&
+      !confirm(trans("steps.confirm_dangerous", { name: def.command }))
+    ) {
       return;
     }
     const extra = this.cleanOpts(def);
@@ -266,7 +281,8 @@ export default class StepList extends Component<Attrs> {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(raw)) {
       if (v === true) out[k] = true;
-      else if (v !== false && v !== null && v !== "" && v !== undefined) out[k] = v;
+      else if (v !== false && v !== null && v !== "" && v !== undefined)
+        out[k] = v;
     }
     return out;
   }
