@@ -301,6 +301,7 @@ ramon-mybb-migrator:
       network_imgur_uncapped: "API do imgur ligada ({used} chamadas hoje, sem teto)"
       notice_host_tripped: "⛔ {host} não está respondendo ({error}) — as demais URLs dele são puladas neste run e retentadas no fim"
       notice_imgur_cap: "⛔ Teto diário da API do imgur atingido ({used}/{cap}) — as URLs do imgur restantes ficam adiadas e voltam amanhã"
+      notice_imgur_remote_cap: "⛔ O imgur reporta a cota deste Client-ID como esgotada (X-RateLimit-ClientRemaining: 0, zera em ~{reset} min) — é também a resposta dele a um Client-ID desconhecido, confira; as URLs do imgur restantes ficam adiadas"
       optimizer_disabled: desligada
       optimizer_unavailable: "indisponível (sem GD) — arquivos gravados como vieram"
       optimizer_summary: "{format}, qualidade {quality}, máx {size}, ganho mínimo {gain}%"

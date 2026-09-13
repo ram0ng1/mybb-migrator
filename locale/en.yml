@@ -300,6 +300,7 @@ ramon-mybb-migrator:
       network_imgur_uncapped: "imgur API on ({used} calls today, no cap)"
       notice_host_tripped: "⛔ {host} is not answering ({error}) — the rest of its URLs are skipped for this run and retried at the end"
       notice_imgur_cap: "⛔ imgur API daily cap reached ({used}/{cap}) — remaining imgur URLs are deferred and will be picked up tomorrow"
+      notice_imgur_remote_cap: "⛔ imgur reports this Client-ID's quota as exhausted (X-RateLimit-ClientRemaining: 0, resets in ~{reset} min) — this is also imgur's answer to an unknown Client-ID, so check it; remaining imgur URLs are deferred"
       optimizer_disabled: "off"
       optimizer_unavailable: "unavailable (no GD) — files are stored exactly as downloaded"
       optimizer_summary: "{format}, quality {quality}, max {size}, minimum gain {gain}%"

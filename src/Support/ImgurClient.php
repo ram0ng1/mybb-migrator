@@ -51,6 +51,9 @@ final class ImgurClient
      */
     private bool $remoteExhausted = false;
 
+    /** Segundos até a cota da aplicação zerar, quando o imgur informou. */
+    private ?int $remoteReset = null;
+
     /** @var null|callable(string): void */
     private $save;
 
@@ -113,6 +116,22 @@ final class ImgurClient
     }
 
     /**
+     * Foi o IMGUR quem disse que a cota acabou (e não o nosso teto)? Merece
+     * mensagem própria: acontece também com um Client-ID errado — o imgur
+     * responde 429 com `X-RateLimit-ClientRemaining: 0` para credencial
+     * desconhecida, e "teto atingido (1/10000)" esconderia isso.
+     */
+    public function remoteExhausted(): bool
+    {
+        return $this->remoteExhausted;
+    }
+
+    public function remoteReset(): ?int
+    {
+        return $this->remoteReset;
+    }
+
+    /**
      * Cabeçalhos da consulta. O `Accept` é explícito porque a API responde
      * HTML para browsers em alguns erros.
      *
@@ -156,6 +175,9 @@ final class ImgurClient
 
         if ($remaining !== null && ctype_digit(trim((string) $remaining)) && (int) $remaining <= 0) {
             $this->remoteExhausted = true;
+
+            $reset = $headers['x-ratelimit-clientreset'] ?? null;
+            $this->remoteReset = $reset !== null && ctype_digit(trim((string) $reset)) ? (int) $reset : null;
         }
     }
 
@@ -246,6 +268,7 @@ final class ImgurClient
             $this->day = $today;
             $this->used = 0;
             $this->remoteExhausted = false;
+            $this->remoteReset = null;
         }
     }
 

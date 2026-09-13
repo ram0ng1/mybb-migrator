@@ -499,21 +499,29 @@ final class ImageFetcher
         assert($client !== null);
 
         if ($client->exhausted()) {
+            // Duas causas, duas mensagens: o NOSSO teto ("volta amanhã") ou o
+            // imgur dizendo que a cota da aplicação acabou — o que também é a
+            // resposta dele a um Client-ID que não existe.
+            $remote = $client->remoteExhausted();
+            $reset = $client->remoteReset();
+
             if (! $this->imgurCapAnnounced && $this->onNotice !== null) {
                 $this->imgurCapAnnounced = true;
-                ($this->onNotice)(['kind' => 'imgur_cap', 'cap' => $client->dailyCap(), 'used' => $client->usedToday()]);
+                ($this->onNotice)([
+                    'kind'  => $remote ? 'imgur_remote_cap' : 'imgur_cap',
+                    'cap'   => $client->dailyCap(),
+                    'used'  => $client->usedToday(),
+                    'reset' => $reset === null ? '?' : (string) (int) ceil($reset / 60),
+                ]);
             }
 
-            return [
-                'ok'    => false,
-                'link'  => null,
-                'final' => true,
-                'res'   => $this->err(
-                    'imgur API: cota diária esgotada (' . $client->usedToday() . '/' . $client->dailyCap() . ') — volta amanhã',
-                    null,
-                    true
-                ),
-            ];
+            $message = $remote
+                ? 'imgur API: o imgur reporta a cota deste Client-ID como esgotada (X-RateLimit-ClientRemaining: 0'
+                    . ($reset === null ? '' : ', zera em ' . (int) ceil($reset / 60) . ' min')
+                    . ') — confira o Client-ID'
+                : 'imgur API: cota diária esgotada (' . $client->usedToday() . '/' . $client->dailyCap() . ') — volta amanhã';
+
+            return ['ok' => false, 'link' => null, 'final' => true, 'res' => $this->err($message, null, true)];
         }
 
         $client->consume();

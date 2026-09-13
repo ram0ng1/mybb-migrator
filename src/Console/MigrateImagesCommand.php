@@ -25,6 +25,9 @@ use Symfony\Component\Console\Input\InputOption;
  * fof/upload), registra em `fof_upload_files` quando a extensão existe, e troca
  * a URL remota pela local dentro do XML do post.
  *
+ * A varredura vai das discussões mais NOVAS para as mais antigas: com orçamento
+ * por run, o que fica pronto primeiro é o que os leitores abrem hoje.
+ *
  * Salvaguardas pensadas para TESTAR ANTES de migrar tudo:
  *  - `--limit` (nº de downloads novos) e `--max-mb` (orçamento total do run):
  *    dá para localizar 20 imagens, olhar o fórum, e só então soltar o resto.
@@ -122,7 +125,7 @@ class MigrateImagesCommand extends AbstractCommand
             ->addOption('hosts', null, InputOption::VALUE_REQUIRED, 'Comma-separated hosts/URL prefixes to localize (overrides the setting).')
             ->addOption('all-hosts', null, InputOption::VALUE_NONE, 'Localize every external image, ignoring the host filter.')
             ->addOption('posts', null, InputOption::VALUE_REQUIRED, 'Maximum posts to scan.')
-            ->addOption('from-id', null, InputOption::VALUE_REQUIRED, 'Start scanning at this post id.')
+            ->addOption('from-id', null, InputOption::VALUE_REQUIRED, 'Only posts with an id at or above this one (the scan itself runs newest discussion first).')
             ->addOption('discussion', null, InputOption::VALUE_REQUIRED, 'Only this discussion: accepts an id, a slug or a full Flarum discussion URL.')
             ->addOption('retry-failed', null, InputOption::VALUE_NONE, 'Try URLs previously recorded as failed again.')
             ->addOption('relink-only', null, InputOption::VALUE_NONE, 'No network: only re-apply URLs already downloaded.')
@@ -263,10 +266,10 @@ class MigrateImagesCommand extends AbstractCommand
 
         $stop = false;
 
-        $query->orderBy('id')->chunkById(200, function ($rows) use (
+        $handle = function ($rows) use (
             &$map, &$stop, $fetcher, $optimizer, $dryRun, $relinkOnly, $retryFailed,
             $limit, $budgetBytes, $maxPosts, $allHosts, $hosts, $total
-        ) {
+        ): bool {
             foreach ($rows as $row) {
                 if ($stop) {
                     return false;
@@ -385,7 +388,40 @@ class MigrateImagesCommand extends AbstractCommand
             }
 
             return ! $stop;
-        }, 'id');
+        };
+
+        // Discussões mais NOVAS primeiro, e dentro de cada uma os posts mais
+        // novos primeiro. Um run com orçamento (--limit / --max-mb) para antes
+        // do fim, e o que ele deve internalizar primeiro é o que os leitores
+        // abrem hoje — não os tópicos de 2010 do começo da tabela. Paginação
+        // por CHAVE (discussion_id, id) e não por offset: reescrever `content`
+        // não muda a ordem, e um offset sobre centenas de milhares de posts
+        // com LIKE refaria a varredura a cada página.
+        $lastDiscussion = null;
+        $lastId = null;
+
+        while (! $stop) {
+            $page = clone $query;
+
+            if ($lastId !== null) {
+                $page->where(function ($q) use ($lastDiscussion, $lastId): void {
+                    $q->where('discussion_id', '<', $lastDiscussion)
+                        ->orWhere(function ($q2) use ($lastDiscussion, $lastId): void {
+                            $q2->where('discussion_id', $lastDiscussion)->where('id', '<', $lastId);
+                        });
+                });
+            }
+
+            $rows = $page->orderByDesc('discussion_id')->orderByDesc('id')->limit(200)->get();
+
+            if ($rows->isEmpty() || $handle($rows) === false) {
+                break;
+            }
+
+            $last = $rows->last();
+            $lastDiscussion = (int) $last->discussion_id;
+            $lastId = (int) $last->id;
+        }
 
         $this->publishProgress($this->scanned, $total);
 

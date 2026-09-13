@@ -161,7 +161,11 @@ export default class MigratorDashboard extends Component<ComponentAttrs> {
             </Button>
           )}
         </div>
-        <StepList state={this.migrator} phases={[phase]} numbered={phase !== "0"} />
+        <StepList
+          state={this.migrator}
+          phases={[phase]}
+          numbered={phase !== "0"}
+        />
       </div>
     );
   }
@@ -207,8 +211,13 @@ export default class MigratorDashboard extends Component<ComponentAttrs> {
             {trans("run.cancel")}
           </Button>
         </div>
-        <ProgressBar progress={this.migrator.stepStatus(running)?.progress ?? null} />
-        <LiveConsole text={this.migrator.status?.runningLog ?? ""} follow={true} />
+        <ProgressBar
+          progress={this.migrator.stepStatus(running)?.progress ?? null}
+        />
+        <LiveConsole
+          text={this.migrator.status?.runningLog ?? ""}
+          follow={true}
+        />
       </div>
     );
   }

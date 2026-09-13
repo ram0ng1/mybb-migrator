@@ -138,10 +138,11 @@ trait MediaFetchOptions
                 // ar" explica por que as URLs seguintes dele passam voando; "a
                 // cota do imgur acabou" explica por que tudo do imgur virou
                 // adiado de repente.
-                $this->info($this->trans(
-                    $notice['kind'] === 'imgur_cap' ? 'common.notice_imgur_cap' : 'common.notice_host_tripped',
-                    $notice
-                ));
+                $this->info($this->trans(match ($notice['kind']) {
+                    'imgur_cap'        => 'common.notice_imgur_cap',
+                    'imgur_remote_cap' => 'common.notice_imgur_remote_cap',
+                    default            => 'common.notice_host_tripped',
+                }, $notice));
             })
             ->onRetry(function (array $retry) use ($pool): void {
                 // Sem esta linha, um 429 do imgur com backoff de 30 s parece o
