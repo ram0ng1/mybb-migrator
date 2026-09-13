@@ -1,0 +1,112 @@
+name: Psalm Taint
+
+# Análise de taint (fluxo de dados origem→sink) para PHP — pega SQLi/XSS/
+# path-traversal que as regras de padrão do Semgrep não veem. O CodeQL não
+# cobre PHP; o Psalm taint é o equivalente.
+#
+# BLOQUEANTE desde o início: o baseline foi pré-verificado limpo localmente
+# (psalm 6.17.1, PHP 8.5, "No errors found" sobre src/, migrations/ e
+# extend.php), então achado novo de taint reprova o PR.
+#
+# Ao contrário das outras extensões ramon/*, o vimeo/psalm NÃO está no
+# require-dev desta — o composer.json fica enxuto e o Psalm é instalado aqui,
+# no runner, junto com as dependências (ver o passo "Resolver dependências").
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: '0 9 * * 1'  # toda segunda, 09:00 UTC
+  workflow_dispatch:
+
+# §35.13 C1 — default-deny.
+permissions: {}
+
+concurrency:
+  group: psalm-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Ver o comentário equivalente em ci.yml: menos conexões simultâneas contra uma
+  # borda do Packagist em mau estado significa menos chance de topar com ela.
+  COMPOSER_MAX_PARALLEL_HTTP: '6'
+
+jobs:
+  psalm:
+    name: Psalm taint analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF
+      actions: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40  # v2.20.1
+        with:
+          egress-policy: audit
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            packagist.org:443
+            repo.packagist.org:443
+            getcomposer.org:443
+            pecl.php.net:443
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
+        with:
+          php-version: '8.3'
+          extensions: dom, mbstring, fileinfo, bcmath, intl, simplexml, tokenizer, sodium, pdo_sqlite
+          coverage: none
+          tools: composer:v2
+
+      # `composer require` em vez de `update`: adiciona o vimeo/psalm ao
+      # require-dev SÓ no checkout do runner e, como o composer.lock não é
+      # versionado, resolve o resto das dependências no mesmo passo.
+      - name: Resolver dependências (composer require vimeo/psalm)
+        run: |
+          backoff=(15 30 60 120)
+          for i in 0 1 2 3 4; do
+            composer require --dev --no-interaction --no-progress --prefer-stable --no-scripts --with-all-dependencies 'vimeo/psalm:^6.0' && exit 0
+            [ "$i" -eq 4 ] && break
+            echo "::warning::composer falhou (tentativa $((i+1))/5), repetindo em ${backoff[$i]}s"
+            sleep "${backoff[$i]}"
+          done
+          echo "::error::composer não resolveu as dependências em 5 tentativas (~3,75 min). Se o log acusa 502 do repo.packagist.org, é incidente upstream — reexecute o job."
+          exit 1
+
+      # Bloqueante: o exit do psalm é propagado após garantir que o SARIF
+      # exista para upload.
+      - name: Psalm taint analysis
+        run: |
+          set +e
+          vendor/bin/psalm --taint-analysis --report=psalm-taint.sarif --no-progress
+          EXIT=$?
+          [ -f psalm-taint.sarif ] || echo '{"version":"2.1.0","runs":[]}' > psalm-taint.sarif
+          ls -l psalm-taint.sarif
+          exit $EXIT
+
+      - name: Upload SARIF — Psalm taint
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3  # v4.37.6
+        with:
+          sarif_file: psalm-taint.sarif
+          category: psalm-taint
+
+      - name: Upload SARIF como artefato
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: psalm-taint-sarif
+          path: psalm-taint.sarif
+          retention-days: 30
+          if-no-files-found: warn

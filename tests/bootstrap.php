@@ -14,3 +14,5 @@ require __DIR__ . '/../src/Support/ImageOptimizer.php';
 require __DIR__ . '/../src/Console/PollOptionsParser.php';
 require __DIR__ . '/../src/Console/MessagesGrouping.php';
 require __DIR__ . '/../src/BBCode/Converter.php';
+require __DIR__ . '/../src/Support/ExitPool.php';
+require __DIR__ . '/../src/Support/ImgurClient.php';

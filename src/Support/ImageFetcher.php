@@ -43,6 +43,28 @@ namespace Ramon\MybbMigrator\Support;
  * dobro sem apertar nenhuma delas. A escolha do IP a cada requisição é a do que
  * estiver livre mais cedo NAQUELE host, e uma retentativa depois de 429 nunca
  * sai pelo endereço que acabou de ser recusado.
+ *
+ * Três acréscimos vindos de uma migração real (fórum de 2010+, milhares de
+ * imagens em hosts que já morreram ou mudaram de endereço):
+ *
+ *  3. HOST INALCANÇÁVEL. `Could not resolve host: s20.postimg.org` não é um
+ *     soluço: é um domínio que não existe mais, e ele aparece centenas de vezes
+ *     seguidas. Retentar cada uma inline (6 tentativas com backoff) é meia hora
+ *     parada sem baixar nada. Agora: (a) com {@see deferConnectionFailures()}
+ *     ligado, uma falha de CONEXÃO (DNS, connect, TLS) volta na primeira vez
+ *     marcada `defer => true`, para quem chama guardar a URL e voltar a ela no
+ *     FIM do run, quando o resto já andou; (b) por host, duas falhas de conexão
+ *     seguidas desarmam o host pelo resto do run — as URLs seguintes dele voltam
+ *     na hora, sem rede, também como `defer`. Um sucesso rearma.
+ *  4. HOST QUE MUDOU DE ESQUEMA. O postimg de 2016 servia em
+ *     `s20.postimg.org/<id>/<arquivo>`; hoje o MESMO id vive em
+ *     `i.postimg.cc/<id>/<arquivo>`. Para os hosts legados a URL reescrita é
+ *     tentada ANTES da original — ver candidates().
+ *  5. imgur AUTENTICADO. Com um {@see ImgurClient} configurado, a imagem é
+ *     resolvida pela API (uma chamada, com cota diária) em vez de chutar cinco
+ *     extensões em i.imgur.com; um 404 da API é falha DEFINITIVA e a cota
+ *     esgotada é falha TRANSITÓRIA (deferred, volta no dia seguinte). A API não
+ *     atende IPv6, então essas chamadas forçam IPv4 e evitam exits IPv6.
  */
 final class ImageFetcher
 {
@@ -83,6 +105,26 @@ final class ImageFetcher
      * está vivo.
      */
     private const EXIT_FAULT_CURL = [5, 7, 45];
+
+    /**
+     * Erros de cURL de CONEXÃO pura — nenhum byte chegou, o host não atendeu:
+     * 6 resolve host, 7 connect, 35 handshake TLS. São os que valem adiar para
+     * o fim do run e os que contam para desarmar o host.
+     */
+    private const CONNECT_CURL = [6, 7, 35];
+
+    /**
+     * Falhas de conexão SEGUIDAS num host até ele ser desarmado pelo resto do
+     * run. Duas, e não uma: um DNS que falhou uma vez pode ter sido o resolver
+     * local; duas seguidas é o domínio que morreu.
+     */
+    private const HOST_TRIP = 2;
+
+    /** Hosts do postimg que só existem em URLs antigas (o s\d+ era o shard). */
+    private const POSTIMG_LEGACY = '#^(?:s\d+\.)?(?:postimg\.(?:org|cc|io)|postimage\.org)$#i';
+
+    /** Onde o postimg serve hoje qualquer id antigo. */
+    private const POSTIMG_MODERN = 'https://i.postimg.cc';
 
     /** Teto da penalidade por host: acima disso o run inteiro pararia de andar. */
     private const PENALTY_CAP = 30.0;
@@ -125,6 +167,33 @@ final class ImageFetcher
      */
     private $onExitDown = null;
 
+    /**
+     * Avisos pontuais que merecem uma linha própria no console: host desarmado,
+     * cota da API do imgur esgotada. Payload: ['kind' => ..., ...detalhes].
+     *
+     * @var null|callable(array<string, mixed>): void
+     */
+    private $onNotice = null;
+
+    /** Acesso autenticado ao imgur; null = chutar extensões como sempre. */
+    private ?ImgurClient $imgur = null;
+
+    /**
+     * Falha de conexão volta na PRIMEIRA vez (marcada `defer`) em vez de ser
+     * retentada inline? Quem chama liga isto na varredura e desliga na passada
+     * final sobre o que ficou pendente.
+     */
+    private bool $deferConnectionFailures = false;
+
+    /** @var array<string, int> host => falhas de conexão seguidas */
+    private array $hostFailures = [];
+
+    /** @var array<string, true> host => desarmado pelo resto do run */
+    private array $hostTripped = [];
+
+    /** Cota da API do imgur já anunciada como esgotada neste run? */
+    private bool $imgurCapAnnounced = false;
+
     public function __construct(
         private int $timeout = 20,
         private int $maxBytes = 10485760,
@@ -165,6 +234,61 @@ final class ImageFetcher
         return $this;
     }
 
+    /**
+     * @param null|callable(array<string, mixed>): void $listener
+     */
+    public function onNotice(?callable $listener): self
+    {
+        $this->onNotice = $listener;
+
+        return $this;
+    }
+
+    /** Liga o imgur autenticado. Um cliente sem Client-ID é o mesmo que null. */
+    public function withImgur(?ImgurClient $client): self
+    {
+        $this->imgur = $client !== null && $client->configured() ? $client : null;
+
+        return $this;
+    }
+
+    public function imgur(): ?ImgurClient
+    {
+        return $this->imgur;
+    }
+
+    /**
+     * Falhas de CONEXÃO (DNS, connect, TLS) voltam na primeira vez, marcadas
+     * `defer => true`, em vez de gastar as retentativas inline. 429/timeout no
+     * meio do download continuam sendo retentados na hora — esses o host está
+     * respondendo, só devagar.
+     */
+    public function deferConnectionFailures(bool $on = true): self
+    {
+        $this->deferConnectionFailures = $on;
+
+        return $this;
+    }
+
+    /**
+     * Rearma todos os hosts desarmados. Chamado antes da passada final sobre as
+     * URLs adiadas: cada host ganha mais {@see HOST_TRIP} chances — e, se cair
+     * de novo, o restante dele volta a ser pulado na hora.
+     */
+    public function resetHosts(): self
+    {
+        $this->hostFailures = [];
+        $this->hostTripped = [];
+
+        return $this;
+    }
+
+    /** Hosts desarmados neste run (para o resumo). @return array<int, string> */
+    public function trippedHosts(): array
+    {
+        return array_keys($this->hostTripped);
+    }
+
     public static function extensionFor(?string $mime): ?string
     {
         return $mime === null ? null : (self::IMAGE_MIMES[strtolower($mime)] ?? null);
@@ -175,13 +299,31 @@ final class ImageFetcher
      * imgur), as variantes de extensão do mesmo id. Devolve o primeiro sucesso
      * ou o último erro.
      *
-     * @return array{ok: bool, bytes: ?string, mime: ?string, ext: ?string, final_url: ?string, error: ?string, transient: bool}
+     * @return array{ok: bool, bytes: ?string, mime: ?string, ext: ?string, final_url: ?string, error: ?string, transient: bool, defer: bool}
      */
     public function fetchImage(string $url): array
     {
         $last = null;
+        $candidates = $this->candidates($url);
 
-        foreach ($this->candidates($url) as $candidate) {
+        // imgur com credencial: UMA chamada à API resolve o link direto certo,
+        // em vez de até cinco GETs chutando extensão. Só vale para o que é
+        // imagem única (id reconhecível); álbuns/galerias seguem como sempre.
+        if ($this->imgur !== null && ($imgurId = $this->imgurId($url)) !== null) {
+            $api = $this->resolveImgur($imgurId);
+
+            if ($api['ok']) {
+                $candidates = [(string) $api['link']];
+            } elseif ($api['final']) {
+                // 404 da API ou cota esgotada: nada a ganhar chutando i.imgur.com
+                // — no primeiro caso a imagem não existe, no segundo é
+                // exatamente o tráfego que o teto existe para evitar.
+                return $this->clean($api['res']);
+            }
+            // Erro inesperado da API (5xx, JSON quebrado): cai no caminho antigo.
+        }
+
+        foreach ($candidates as $candidate) {
             $res = $this->get($candidate);
 
             if (! $res['ok']) {
@@ -259,31 +401,45 @@ final class ImageFetcher
     }
 
     /**
-     * URLs a tentar, em ordem. No imgur a página `imgur.com/<id>` e as variantes
-     * `i.imgur.com/<id>.<ext>` apontam para o mesmo objeto — a extensão na URL é
-     * só um pedido de conversão. Quando ela não bate, o imgur redireciona para a
-     * página HTML; então geramos as variantes do mesmo id.
+     * URLs a tentar, em ordem.
+     *
+     * imgur: a página `imgur.com/<id>` e as variantes `i.imgur.com/<id>.<ext>`
+     * apontam para o mesmo objeto — a extensão na URL é só um pedido de
+     * conversão. Quando ela não bate, o imgur redireciona para a página HTML;
+     * então geramos as variantes do mesmo id, DEPOIS da original.
+     *
+     * postimg: o host antigo (`s20.postimg.org`, `postimage.org`...) não resolve
+     * mais, mas o id e o nome do arquivo continuam válidos no host atual:
+     *
+     *     http://s20.postimg.org/65kcb53xp/sotd_2_6_2016_1.jpg
+     *  -> https://i.postimg.cc/65kcb53xp/sotd_2_6_2016_1.jpg
+     *
+     * Aqui a reescrita vai ANTES da original: a original é DNS morto, e uma
+     * falha de conexão encerra a lista (é transitória) — se ela viesse primeiro
+     * a reescrita nunca seria tentada. A original fica como último recurso para
+     * o caso de o id não existir mais no host novo.
      *
      * @return array<int, string>
      */
     public function candidates(string $url): array
     {
-        $out = [$url];
-
         $host = strtolower((string) parse_url($url, PHP_URL_HOST));
         $path = (string) parse_url($url, PHP_URL_PATH);
 
-        if ($host !== 'imgur.com' && ! str_ends_with($host, '.imgur.com')) {
-            return $out;
+        if ($host !== '' && $host !== 'i.postimg.cc' && preg_match(self::POSTIMG_LEGACY, $host)) {
+            // Só o formato /<id>/<arquivo.ext> tem tradução direta; a página
+            // /image/<id>/ não diz o nome do arquivo, e sem ele não há URL.
+            if (preg_match('#^/([A-Za-z0-9]{6,16})/([^/]+\.[A-Za-z0-9]{2,5})$#', $path, $m)) {
+                return [self::POSTIMG_MODERN . '/' . $m[1] . '/' . $m[2], $url];
+            }
+
+            return [$url];
         }
 
-        // /a/xxxx (álbum), /gallery/xxxx e /t/... não são imagens diretas.
-        if (preg_match('#^/(a|gallery|t)/#i', $path)) {
-            return $out;
-        }
+        $out = [$url];
 
-        $id = pathinfo($path, PATHINFO_FILENAME);
-        if ($id === '' || ! preg_match('/^[A-Za-z0-9]{5,15}$/', $id)) {
+        $id = $this->imgurId($url);
+        if ($id === null) {
             return $out;
         }
 
@@ -295,6 +451,107 @@ final class ImageFetcher
         }
 
         return $out;
+    }
+
+    /**
+     * Id de imagem ÚNICA do imgur na URL, ou null quando não é imgur ou é
+     * álbum/galeria (que não têm imagem direta para chutar nem consultar).
+     */
+    public function imgurId(string $url): ?string
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $path = (string) parse_url($url, PHP_URL_PATH);
+
+        if ($host !== 'imgur.com' && ! str_ends_with($host, '.imgur.com')) {
+            return null;
+        }
+
+        // /a/xxxx (álbum), /gallery/xxxx e /t/... não são imagens diretas.
+        if (preg_match('#^/(a|gallery|t)/#i', $path)) {
+            return null;
+        }
+
+        $id = pathinfo($path, PATHINFO_FILENAME);
+
+        // Sufixo de tamanho (`T1Ji3QDl.jpg` = large, `...s` = small...) aponta
+        // para a MESMA imagem; a API só conhece o id puro.
+        if ($id !== '' && preg_match('/^([A-Za-z0-9]{7})[sbtmlh]$/', $id, $m)) {
+            $id = $m[1];
+        }
+
+        if ($id === '' || ! preg_match('/^[A-Za-z0-9]{5,15}$/', $id)) {
+            return null;
+        }
+
+        return $id;
+    }
+
+    /**
+     * Consulta a API do imgur pelo link direto. Devolve `final => true` quando
+     * não há mais o que tentar (imagem não existe, ou a cota do dia acabou) —
+     * nesse caso `res` já é o erro pronto para devolver.
+     *
+     * @return array{ok: bool, link: ?string, final: bool, res: array<string, mixed>}
+     */
+    private function resolveImgur(string $id): array
+    {
+        $client = $this->imgur;
+        assert($client !== null);
+
+        if ($client->exhausted()) {
+            if (! $this->imgurCapAnnounced && $this->onNotice !== null) {
+                $this->imgurCapAnnounced = true;
+                ($this->onNotice)(['kind' => 'imgur_cap', 'cap' => $client->dailyCap(), 'used' => $client->usedToday()]);
+            }
+
+            return [
+                'ok'    => false,
+                'link'  => null,
+                'final' => true,
+                'res'   => $this->err(
+                    'imgur API: cota diária esgotada (' . $client->usedToday() . '/' . $client->dailyCap() . ') — volta amanhã',
+                    null,
+                    true
+                ),
+            ];
+        }
+
+        $client->consume();
+
+        // IPv4 forçado: a API do imgur não atende IPv6 — nem por interface
+        // IPv6 do servidor, nem por resolução AAAA.
+        $res = $this->get($client->endpoint($id), $client->headers(), true);
+        $client->observe((array) ($res['headers'] ?? []));
+
+        if (! $res['ok']) {
+            $status = (int) ($res['status'] ?? 0);
+
+            if ($status === 404 || $status === 400) {
+                $parsed = $client->parseResponse($status, (string) ($res['partial'] ?? ''));
+
+                return ['ok' => false, 'link' => null, 'final' => true, 'res' => $this->err((string) $parsed['error'], null, false)];
+            }
+
+            // 429/5xx da API: transitório, e não adianta ir chutar i.imgur.com
+            // (é o mesmo host recusando). Devolve o erro como veio.
+            if ($res['transient'] ?? false) {
+                return ['ok' => false, 'link' => null, 'final' => true, 'res' => $res];
+            }
+
+            return ['ok' => false, 'link' => null, 'final' => false, 'res' => $res];
+        }
+
+        $parsed = $client->parseResponse(200, (string) $res['bytes']);
+
+        if ($parsed['ok']) {
+            return ['ok' => true, 'link' => $parsed['link'], 'final' => false, 'res' => $res];
+        }
+
+        if ($parsed['not_found']) {
+            return ['ok' => false, 'link' => null, 'final' => true, 'res' => $this->err((string) $parsed['error'])];
+        }
+
+        return ['ok' => false, 'link' => null, 'final' => false, 'res' => $this->err((string) $parsed['error'])];
     }
 
     /**
@@ -312,9 +569,11 @@ final class ImageFetcher
      * disponível (redirects, abort no meio do download, retomada por Range);
      * cai para stream wrapper caso contrário.
      *
+     * @param array<int, string> $headers cabeçalhos extras (API do imgur)
+     * @param bool               $ipv4    forçar IPv4 (a API do imgur não atende IPv6)
      * @return array<string, mixed>
      */
-    private function get(string $url): array
+    private function get(string $url, array $headers = [], bool $ipv4 = false): array
     {
         if (! preg_match('#^https?://#i', $url)) {
             return $this->err('URL sem esquema http(s)');
@@ -325,8 +584,19 @@ final class ImageFetcher
         $carry = '';
         $avoid = null;
 
+        // Host desarmado neste run: nem tenta. É o que faz um domínio morto com
+        // 300 imagens custar 2 falhas, e não 300 × retentativas.
+        if (isset($this->hostTripped[$host])) {
+            return $this->err(
+                'host inalcançável — pulado após ' . self::HOST_TRIP . ' falhas de conexão seguidas',
+                null,
+                true,
+                defer: true
+            );
+        }
+
         for ($attempt = 0; ; $attempt++) {
-            $exit = $this->pickExit($host, $avoid);
+            $exit = $this->pickExit($host, $avoid, $ipv4);
 
             if ($exit === null) {
                 // Transitório de propósito: as imagens ficam `deferred` e voltam
@@ -338,20 +608,54 @@ final class ImageFetcher
             $this->awaitSlot($host, $exit);
 
             $res = $useCurl
-                ? $this->getCurl($url, $carry, $exit)
-                : $this->getStream($url, $exit);
+                ? $this->getCurl($url, $carry, $exit, $headers, $ipv4)
+                : $this->getStream($url, $exit, $headers);
 
             if ($res['ok']) {
                 $this->reward($host, $exit);
+                unset($this->hostFailures[$host]);
 
                 return $res;
             }
 
+            $errno = (int) ($res['errno'] ?? 0);
+
             // Falha de CONEXÃO acusa o exit; 429/5xx acusam a URL ou o host.
-            if (in_array((int) ($res['errno'] ?? 0), self::EXIT_FAULT_CURL, true)
+            // O exit "direto" nunca leva falta: não há outro por onde sair, e
+            // uma conexão recusada ali é o DESTINO recusando — três hosts
+            // mortos em sequência não podem deixar o run inteiro sem saída.
+            if ($exit['kind'] !== 'direct'
+                && in_array($errno, self::EXIT_FAULT_CURL, true)
                 && $this->exits->strike($exit['key'])
                 && $this->onExitDown !== null) {
                 ($this->onExitDown)(['exit' => $exit['label'], 'error' => (string) ($res['error'] ?? '')]);
+            }
+
+            // Falha de conexão pura (nenhum byte): conta para desarmar o HOST.
+            // Só quando o exit em si não é o suspeito — um proxy morto derruba
+            // todo host, e a ficha disso é do ExitPool, não do host.
+            $connectFailure = in_array($errno, self::CONNECT_CURL, true)
+                && ($res['partial'] ?? '') === ''
+                && ($errno !== 7 || $exit['kind'] === 'direct');
+
+            if ($connectFailure) {
+                $this->hostFailures[$host] = ($this->hostFailures[$host] ?? 0) + 1;
+
+                if ($this->hostFailures[$host] >= self::HOST_TRIP) {
+                    $this->hostTripped[$host] = true;
+
+                    if ($this->onNotice !== null) {
+                        ($this->onNotice)(['kind' => 'host_tripped', 'host' => $host, 'error' => (string) ($res['error'] ?? '')]);
+                    }
+                }
+
+                // Adiar em vez de insistir: a URL volta no fim do run.
+                if ($this->deferConnectionFailures || isset($this->hostTripped[$host])) {
+                    $res['transient'] = true;
+                    $res['defer'] = true;
+
+                    return $res;
+                }
             }
 
             if (! ($res['transient'] ?? false) || $attempt >= $this->retries) {
@@ -401,12 +705,26 @@ final class ImageFetcher
      * exits igualmente livres cai no rodízio, para não viciar sempre no
      * primeiro da lista.
      *
-     * @param ?string $avoid exit a evitar (o que acabou de ser recusado)
+     * @param ?string $avoid    exit a evitar (o que acabou de ser recusado)
+     * @param bool    $ipv4Only pular exits que são interface IPv6 (API do imgur)
      * @return null|array{key: string, label: string, kind: string, value: string}
      */
-    private function pickExit(string $host, ?string $avoid = null): ?array
+    private function pickExit(string $host, ?string $avoid = null, bool $ipv4Only = false): ?array
     {
         $live = $this->exits->live();
+
+        if ($ipv4Only) {
+            $v4 = array_values(array_filter(
+                $live,
+                fn (array $exit): bool => ! ($exit['kind'] === 'interface' && str_contains($exit['value'], ':'))
+            ));
+            // Só há IPv6? Melhor tentar (e falhar com o erro real) do que
+            // desistir em silêncio.
+            if ($v4 !== []) {
+                $live = $v4;
+            }
+        }
+
         $total = count($live);
 
         if ($total === 0) {
@@ -448,11 +766,12 @@ final class ImageFetcher
     }
 
     /**
-     * @param string $carry bytes já recebidos numa tentativa anterior; quando
-     *                      não vazio a requisição pede só o restante (Range).
+     * @param string             $carry   bytes já recebidos numa tentativa anterior; quando
+     *                                    não vazio a requisição pede só o restante (Range).
+     * @param array<int, string> $headers cabeçalhos extras
      * @return array<string, mixed>
      */
-    private function getCurl(string $url, string $carry = '', ?array $exit = null): array
+    private function getCurl(string $url, string $carry = '', ?array $exit = null, array $headers = [], bool $ipv4 = false): array
     {
         $ch = curl_init();
         $body = '';
@@ -461,6 +780,8 @@ final class ImageFetcher
         $offset = strlen($carry);
         $retryAfter = null;
         $headerStatus = 0;
+        /** @var array<string, string> $seen cabeçalhos da ÚLTIMA resposta, em minúsculas */
+        $seen = [];
 
         curl_setopt_array($ch, [
             CURLOPT_URL            => $url,
@@ -476,19 +797,26 @@ final class ImageFetcher
             CURLOPT_TIMEOUT        => max(120, $this->timeout * 6),
             CURLOPT_USERAGENT      => self::UA,
             CURLOPT_ENCODING       => '',
-            CURLOPT_HTTPHEADER     => ['Accept: image/avif,image/webp,image/*,*/*;q=0.8'],
+            CURLOPT_HTTPHEADER     => array_merge(
+                $headers === [] ? ['Accept: image/avif,image/webp,image/*,*/*;q=0.8'] : [],
+                $headers
+            ),
             // Fóruns antigos e CDNs de imagem frequentemente têm cadeia de
             // certificados quebrada; o conteúdo é validado por magic bytes.
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => 0,
             CURLOPT_HEADER         => false,
             CURLOPT_RETURNTRANSFER => false,
-            CURLOPT_HEADERFUNCTION => function ($_ch, string $line) use (&$retryAfter, &$headerStatus): int {
+            CURLOPT_HEADERFUNCTION => function ($_ch, string $line) use (&$retryAfter, &$headerStatus, &$seen): int {
                 if (preg_match('#^HTTP/\S+\s+(\d{3})#', $line, $m)) {
                     $headerStatus = (int) $m[1];
                     $retryAfter = null; // novo bloco de cabeçalhos (redirect)
-                } elseif (preg_match('#^Retry-After:\s*(.+)$#i', $line, $m)) {
-                    $retryAfter = $this->parseRetryAfter(trim($m[1]));
+                    $seen = [];
+                } elseif (preg_match('#^([A-Za-z0-9-]+):\s*(.*?)\s*$#', $line, $m)) {
+                    $seen[strtolower($m[1])] = $m[2];
+                    if (strcasecmp($m[1], 'Retry-After') === 0) {
+                        $retryAfter = $this->parseRetryAfter($m[2]);
+                    }
                 }
 
                 return strlen($line);
@@ -507,6 +835,10 @@ final class ImageFetcher
 
         if ($offset > 0) {
             curl_setopt($ch, CURLOPT_RANGE, $offset . '-');
+        }
+
+        if ($ipv4) {
+            curl_setopt($ch, CURLOPT_IPRESOLVE, defined('CURL_IPRESOLVE_V4') ? CURL_IPRESOLVE_V4 : 1);
         }
 
         // A rotação de IP se resume a estas duas linhas: ou amarramos o
@@ -531,35 +863,40 @@ final class ImageFetcher
         $full = $resumed ? $carry . $body : $body;
 
         if ($tooBig) {
-            return $this->err('excede o limite de ' . $this->mb($this->maxBytes) . ' MB', $final);
+            return $this->err('excede o limite de ' . $this->mb($this->maxBytes) . ' MB', $final, headers: $seen);
         }
         if ($errno !== 0) {
             $retriable = in_array($errno, self::RETRIABLE_CURL, true)
                 || in_array($errno, self::EXIT_FAULT_CURL, true);
 
-            return $this->err('curl: ' . $error, $final, $retriable, 0, null, $full, $errno);
+            return $this->err('curl: ' . $error, $final, $retriable, 0, null, $full, $errno, headers: $seen);
         }
         if ($status < 200 || $status >= 300) {
+            // O corpo vai junto: a API do imgur explica o erro em JSON.
             return $this->err(
                 'HTTP ' . $status . ($status === 429 ? ' (limite de requisições do host)' : ''),
                 $final,
                 self::isTransientStatus($status),
                 $status,
-                $retryAfter
+                $retryAfter,
+                $full,
+                headers: $seen
             );
         }
         if ($full === '') {
-            return $this->err('resposta vazia', $final, true);
+            return $this->err('resposta vazia', $final, true, headers: $seen);
         }
 
-        return ['ok' => true, 'bytes' => $full, 'mime' => null, 'ext' => null, 'final_url' => $final, 'error' => null, 'transient' => false];
+        return ['ok' => true, 'bytes' => $full, 'mime' => null, 'ext' => null, 'final_url' => $final, 'error' => null, 'transient' => false, 'headers' => $seen];
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function getStream(string $url, ?array $exit = null): array
+    private function getStream(string $url, ?array $exit = null, array $headers = []): array
     {
+        $extra = $headers === [] ? ['Accept: image/avif,image/webp,image/*,*/*;q=0.8'] : $headers;
+
         $http = [
             'method'          => 'GET',
             'timeout'         => $this->timeout,
@@ -567,7 +904,7 @@ final class ImageFetcher
             'max_redirects'   => 6,
             'ignore_errors'   => true,
             'header'          => 'User-Agent: ' . self::UA . "\r\n"
-                . "Accept: image/avif,image/webp,image/*,*/*;q=0.8\r\n",
+                . implode("\r\n", $extra) . "\r\n",
         ];
         $socket = [];
 
@@ -603,14 +940,19 @@ final class ImageFetcher
         $status = 0;
         $final = $url;
         $retryAfter = null;
+        $seen = [];
         foreach ((array) ($meta['wrapper_data'] ?? []) as $line) {
             if (preg_match('#^HTTP/\S+\s+(\d{3})#', (string) $line, $m)) {
                 $status = (int) $m[1];
                 $retryAfter = null;
-            } elseif (preg_match('#^Location:\s*(.+)$#i', (string) $line, $m)) {
-                $final = trim($m[1]);
-            } elseif (preg_match('#^Retry-After:\s*(.+)$#i', (string) $line, $m)) {
-                $retryAfter = $this->parseRetryAfter(trim($m[1]));
+                $seen = [];
+            } elseif (preg_match('#^([A-Za-z0-9-]+):\s*(.*?)\s*$#', (string) $line, $m)) {
+                $seen[strtolower($m[1])] = $m[2];
+                if (strcasecmp($m[1], 'Location') === 0) {
+                    $final = $m[2];
+                } elseif (strcasecmp($m[1], 'Retry-After') === 0) {
+                    $retryAfter = $this->parseRetryAfter($m[2]);
+                }
             }
         }
 
@@ -618,16 +960,16 @@ final class ImageFetcher
         fclose($handle);
 
         if (strlen($body) > $this->maxBytes) {
-            return $this->err('excede o limite de ' . $this->mb($this->maxBytes) . ' MB', $final);
+            return $this->err('excede o limite de ' . $this->mb($this->maxBytes) . ' MB', $final, headers: $seen);
         }
         if ($status !== 0 && ($status < 200 || $status >= 300)) {
-            return $this->err('HTTP ' . $status, $final, self::isTransientStatus($status), $status, $retryAfter);
+            return $this->err('HTTP ' . $status, $final, self::isTransientStatus($status), $status, $retryAfter, $body, headers: $seen);
         }
         if ($body === '') {
-            return $this->err('resposta vazia', $final, true);
+            return $this->err('resposta vazia', $final, true, headers: $seen);
         }
 
-        return ['ok' => true, 'bytes' => $body, 'mime' => null, 'ext' => null, 'final_url' => $final, 'error' => null, 'transient' => false];
+        return ['ok' => true, 'bytes' => $body, 'mime' => null, 'ext' => null, 'final_url' => $final, 'error' => null, 'transient' => false, 'headers' => $seen];
     }
 
     /**
@@ -802,7 +1144,7 @@ final class ImageFetcher
      * devolvê-lo a quem chamou.
      *
      * @param array<string, mixed> $res
-     * @return array{ok: bool, bytes: ?string, mime: ?string, ext: ?string, final_url: ?string, error: ?string, transient: bool}
+     * @return array{ok: bool, bytes: ?string, mime: ?string, ext: ?string, final_url: ?string, error: ?string, transient: bool, defer: bool}
      */
     private function clean(array $res): array
     {
@@ -814,10 +1156,14 @@ final class ImageFetcher
             'final_url' => $res['final_url'] ?? null,
             'error'     => $res['error'] ?? null,
             'transient' => (bool) ($res['transient'] ?? false),
+            // `defer` = host não atendeu (DNS/connect/TLS): vale voltar a esta
+            // URL no FIM do run, depois que o resto andou.
+            'defer'     => (bool) ($res['defer'] ?? false),
         ];
     }
 
     /**
+     * @param array<string, string> $headers
      * @return array<string, mixed>
      */
     private function err(
@@ -828,6 +1174,8 @@ final class ImageFetcher
         ?int $retryAfter = null,
         string $partial = '',
         int $errno = 0,
+        bool $defer = false,
+        array $headers = [],
     ): array {
         return [
             'ok'          => false,
@@ -837,10 +1185,12 @@ final class ImageFetcher
             'final_url'   => $final,
             'error'       => $message,
             'transient'   => $transient,
+            'defer'       => $defer,
             'status'      => $status,
             'retry_after' => $retryAfter,
             'partial'     => $partial,
             'errno'       => $errno,
+            'headers'     => $headers,
         ];
     }
 }

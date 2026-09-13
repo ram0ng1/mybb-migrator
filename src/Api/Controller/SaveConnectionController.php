@@ -74,10 +74,17 @@ class SaveConnectionController implements RequestHandlerInterface
         if (array_key_exists('attachments_dir', $body)) {
             $this->settings->set('mybb-migrator.attachments_dir', trim((string) $body['attachments_dir']));
         }
+        // Client-ID da API do imgur (ver ImgurClient). Campo em branco APAGA a
+        // credencial de propósito: é o jeito de voltar ao modo sem API.
+        if (array_key_exists('imgur_client_id', $body)) {
+            $this->settings->set('mybb-migrator.imgur_client_id', trim((string) $body['imgur_client_id']));
+        }
         $numeric = [
             'image_limit', 'image_max_mb', 'image_max_file_mb',
             // Otimização + ritmo de rede (ver ImageOptimizer / ImageFetcher).
             'image_quality', 'image_max_dim', 'image_host_delay', 'image_retries',
+            // Teto diário de chamadas à API do imgur (0 = sem teto).
+            'imgur_daily_cap',
         ];
         foreach ($numeric as $field) {
             if (array_key_exists($field, $body)) {

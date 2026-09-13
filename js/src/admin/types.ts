@@ -1,10 +1,6 @@
 export type Phase = "0" | "1" | "2" | "3" | "media" | "diag";
 export type StepStatusName =
-  | "pending"
-  | "running"
-  | "done"
-  | "failed"
-  | "skipped";
+  "pending" | "running" | "done" | "failed" | "skipped";
 
 export interface StepDef {
   key: string;
@@ -99,6 +95,13 @@ export interface MediaConfig {
    * do próprio servidor.
    */
   image_exit_ips: string;
+  /**
+   * imgur autenticado: Client-ID da API (vazio = chutar extensões como
+   * sempre), teto de chamadas por dia UTC e quanto já foi gasto hoje.
+   */
+  imgur_client_id: string;
+  imgur_daily_cap: number;
+  imgur_used_today: number;
   /** O PHP do servidor sabe gravar WebP (GD com libwebp)? */
   webp_supported: boolean;
   attachments_dir: string;
@@ -193,6 +196,8 @@ export interface ConnectionPayload {
   image_host_delay?: string | number;
   image_retries?: string | number;
   image_exit_ips?: string;
+  imgur_client_id?: string;
+  imgur_daily_cap?: string | number;
   attachments_dir?: string;
 }
 

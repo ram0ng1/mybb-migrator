@@ -152,6 +152,19 @@ ramon-mybb-migrator:
         IP esteja configurado neste servidor; um endereço com esquema ou porta
         (socks5://host:1080, usuario:senha@host:8080) é usado como PROXY. Vazio,
         os downloads saem pelo IP do próprio servidor.
+      imgur_client_id: Client-ID da API do imgur (opcional)
+      imgur_daily_cap: Chamadas à API por dia
+      imgur_used_today: "{used} de {cap} chamadas à API usadas hoje (UTC)"
+      imgur_hint: >-
+        Registre uma aplicação gratuita em api.imgur.com/oauth2/addclient e cole
+        o Client-ID aqui. Com ele, cada imagem do imgur é resolvida por UMA
+        chamada autenticada que devolve o link direto certo, em vez de até cinco
+        chutes em i.imgur.com que levam limite de requisições (HTTP 429). O
+        imgur concede cerca de 12.500 chamadas por dia por aplicação; o teto ao
+        lado (padrão 10.000) faz o run parar de chamar a API antes disso, e o
+        contador persiste entre runs — o que sobrar fica adiado para o dia
+        seguinte. Baixar a imagem em si não conta. A API do imgur não responde
+        por IPv6, então essas chamadas são forçadas a IPv4.
       attachments_dir: Pasta uploads do MyBB (opcional)
       attachments_dir_hint: >-
         Caminho da pasta “uploads” do MyBB. Preenchida, os anexos são copiados
@@ -283,6 +296,11 @@ ramon-mybb-migrator:
       retrying_via: "↻ {url} — {error} · por {exit} · retentativa {attempt}/{of} em {wait}s"
       exit_down: "⚠ IP de saída {exit} saiu do rodízio após falhas seguidas de conexão — {error}"
       network_exits: "{count} IPs de saída em rodízio ({list})"
+      network_defer: "hosts inalcançáveis adiados para o fim do run"
+      network_imgur: "API do imgur ligada ({used}/{cap} chamadas usadas hoje)"
+      network_imgur_uncapped: "API do imgur ligada ({used} chamadas hoje, sem teto)"
+      notice_host_tripped: "⛔ {host} não está respondendo ({error}) — as demais URLs dele são puladas neste run e retentadas no fim"
+      notice_imgur_cap: "⛔ Teto diário da API do imgur atingido ({used}/{cap}) — as URLs do imgur restantes ficam adiadas e voltam amanhã"
       optimizer_disabled: desligada
       optimizer_unavailable: "indisponível (sem GD) — arquivos gravados como vieram"
       optimizer_summary: "{format}, qualidade {quality}, máx {size}, ganho mínimo {gain}%"
@@ -320,6 +338,9 @@ ramon-mybb-migrator:
       dry_download: "  [dry-run] baixaria {url}"
       deferred: "⏳ adiada {url} — {error}"
       failed: "⚠ falhou {url} — {error}"
+      queued: "↪ adiada para o fim do run {url} — {error}"
+      pending_start: "⏳ Fim da varredura: retentando {count} URL(s) de {hosts} host(s) que não responderam antes…"
+      pending_done: "  {recovered} de {count} URL(s) adiadas recuperadas; o resto continua adiado para o próximo run."
       budget_hit: "⚠ Limite do run atingido — a varredura parou antes do fim. Rode de novo (com um limite maior) para continuar de onde parou; nada já baixado é rebaixado."
       failed_hint: "⚠ URLs que falharam ficam registradas e não são retentadas sozinhas (a maioria é imagem realmente apagada na origem). Use --retry-failed para tentar de novo."
       deferred_hint: "⏳ {count} URL(s) adiadas por limite de requisições (429) ou lentidão do host — NÃO são imagens perdidas. Rode o passo de novo, sem --retry-failed, que elas voltam a ser tentadas; se o host insistir no 429, aumente --host-delay."
@@ -334,6 +355,8 @@ ramon-mybb-migrator:
         skipped_host: puladas (host de fora)
         skipped_local: puladas (já locais)
         skipped_failed: puladas (falha anterior)
+        queued: adiadas para o fim do run (host sem resposta)
+        recovered: recuperadas no fim do run
 
     attachments:
       uploads_detected: "Pasta de uploads detectada: {path}"

@@ -330,6 +330,9 @@ php flarum mybb:optimize-media --force --limit=50
 | `--max-dim=N` | Resize anything whose longest side exceeds N pixels (default 1600; `0` keeps the original size). |
 | `--no-webp` | Optimize without converting to WebP — keeps the source format. |
 | `--no-optimize` | Store the bytes exactly as downloaded: no re-encoding, no resizing. |
+| `--imgur-client-id=ID` | imgur API Client-ID (overrides the panel). Each imgur image is resolved with one authenticated API call instead of guessing extensions at `i.imgur.com`. |
+| `--imgur-daily-cap=N` | Maximum imgur API calls per UTC day, persisted across runs (default 10000; `0` = no cap). Once reached, remaining imgur URLs are deferred to the next day. |
+| `--no-defer` | Retry DNS/connection failures inline instead of pushing those URLs to the end of the run. |
 | `--locale=xx` | Language of this run's output (e.g. `pt-BR`). Defaults to the panel setting, then to the forum's `default_locale`. |
 
 What makes re-running safe:
@@ -348,6 +351,41 @@ What makes re-running safe:
 - After `mybb:rebuild-formatting` (which re-derives posts from MyBB and brings
   the remote URLs back), run `php flarum mybb:images --force --relink-only` to
   re-apply the whole map in seconds.
+
+Hosts that do not answer (dead DNS, refused connections) do not stall the scan:
+
+- The first connection failure for a URL sends it to a **pending queue** instead
+  of burning the inline retries; the scan moves on. When the scan is over, the
+  queue is retried once more with the normal retries/backoff, and the posts
+  whose images came back are rewritten then.
+- Two consecutive connection failures on the same host **trip** it for the rest
+  of the run: every further URL on that host is skipped instantly (no network)
+  and stored as `deferred`. A domain like `s20.postimg.org` with 300 images
+  costs two failed connections, not 300 × 6 retries. `--no-defer` restores the
+  old inline behaviour.
+- Hosts that **changed URL scheme** are rewritten before download. postimg is
+  the known case: `http://s20.postimg.org/65kcb53xp/sotd.jpg` (2016, dead host)
+  is tried as `https://i.postimg.cc/65kcb53xp/sotd.jpg` first, the original
+  URL last. Other legacy postimg/postimage hosts (`sNN.postimg.cc`, `.io`,
+  `postimage.org`) follow the same rule; page URLs (`/image/<id>/`) cannot be
+  translated because they do not carry the file name.
+
+imgur with an API Client-ID (Images tab, or `--imgur-client-id`):
+
+- Register a free application at <https://api.imgur.com/oauth2/addclient> and
+  paste the Client-ID. Each imgur image is then resolved with **one**
+  authenticated call to `api.imgur.com/3/image/<id>` that returns the right
+  direct link — instead of up to five guesses at `i.imgur.com` that get
+  rate-limited. A `404` from the API is a definitive `failed`; downloading the
+  returned link does not count against the API quota.
+- The **daily cap** (default 10000, below imgur's ~12500/day per application)
+  is counted per UTC day and persisted in `settings`, so it survives across
+  runs and processes; the Images tab shows how much of today's quota is used.
+  Once reached, the remaining imgur URLs are stored as `deferred` and picked up
+  by a run on the next day. `X-RateLimit-ClientRemaining: 0` from imgur ends
+  the day early as well.
+- imgur's API does not answer over IPv6: those calls force IPv4 and skip IPv6
+  exit interfaces from the rotation.
 
 Dead-image handling worth knowing about:
 

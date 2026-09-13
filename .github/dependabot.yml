@@ -1,0 +1,82 @@
+# Dependabot: composer (/), npm (/js) e github-actions (/), semanal.
+# `groups` junta cada ecossistema num ÚNICO PR por semana — acaba com a
+# cascata de conflito de vários PRs de action tocando os mesmos arquivos de
+# workflow, e reduz o volume. Labels batem com .github/pr-labeler.yml.
+# Grupo cobre só minor+patch (auto-merge verde); MAJOR sai como PR
+# individual para revisão manual, sem contaminar o grupo.
+version: 2
+updates:
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    # Janela de espera antes de adotar uma release recém-publicada. É a defesa
+    # contra a classe de ataque do tj-actions: uma versão comprometida costuma
+    # ser detectada e despublicada em horas ou poucos dias, e a maior parte do
+    # risco está em consumi-la no minuto em que sai. Não atrasa Dependabot
+    # security updates, que vêm de advisory e correm por fora do cooldown.
+    cooldown:
+      default-days: 7
+      semver-patch-days: 3
+      semver-major-days: 30
+    labels:
+      - dependencias
+    groups:
+      composer:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: npm
+    directory: /js
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    # Janela de espera antes de adotar uma release recém-publicada. É a defesa
+    # contra a classe de ataque do tj-actions: uma versão comprometida costuma
+    # ser detectada e despublicada em horas ou poucos dias, e a maior parte do
+    # risco está em consumi-la no minuto em que sai. Não atrasa Dependabot
+    # security updates, que vêm de advisory e correm por fora do cooldown.
+    cooldown:
+      default-days: 7
+      semver-patch-days: 3
+      semver-major-days: 30
+    labels:
+      - dependencias
+    groups:
+      npm:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    # Mesma janela de espera dos outros ecossistemas — e é aqui que ela mais
+    # importa, já que o ataque que a motiva (tj-actions) foi contra uma action.
+    #
+    # Só `default-days`: os cortes por semver não são suportados para
+    # github-actions, e o Dependabot recusa o arquivo inteiro se eles
+    # aparecerem. Actions são versionadas por tag móvel, não por semver que o
+    # Dependabot possa classificar, então não há major/patch a distinguir.
+    cooldown:
+      default-days: 7
+    labels:
+      - dependencias
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

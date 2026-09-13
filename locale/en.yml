@@ -151,6 +151,19 @@ ramon-mybb-migrator:
         on this server; an address with a scheme or a port
         (socks5://host:1080, user:pass@host:8080) is used as a proxy. Leave
         empty to download from the server's own IP.
+      imgur_client_id: imgur API Client-ID (optional)
+      imgur_daily_cap: API calls per day
+      imgur_used_today: "{used} of {cap} API calls used today (UTC)"
+      imgur_hint: >-
+        Register a free application at api.imgur.com/oauth2/addclient and paste
+        its Client-ID here. With it, each imgur image is resolved by ONE
+        authenticated API call that returns the right direct link, instead of up
+        to five guesses at i.imgur.com that get rate-limited (HTTP 429). imgur
+        grants about 12,500 calls per day per application; the cap on the right
+        (default 10,000) makes the run stop calling the API before that, and the
+        counter persists across runs — anything left over is simply deferred to
+        the next day. Downloading the image itself does not count. The imgur
+        API does not answer over IPv6, so these calls are forced to IPv4.
       attachments_dir: MyBB uploads folder (optional)
       attachments_dir_hint: >-
         Path to the MyBB “uploads” folder. When set, attachments are copied
@@ -282,6 +295,11 @@ ramon-mybb-migrator:
       retrying_via: "↻ {url} — {error} · via {exit} · retry {attempt}/{of} in {wait}s"
       exit_down: "⚠ exit {exit} dropped from the rotation after repeated connection failures — {error}"
       network_exits: "{count} exit IPs in rotation ({list})"
+      network_defer: "unreachable hosts deferred to the end of the run"
+      network_imgur: "imgur API on ({used}/{cap} calls used today)"
+      network_imgur_uncapped: "imgur API on ({used} calls today, no cap)"
+      notice_host_tripped: "⛔ {host} is not answering ({error}) — the rest of its URLs are skipped for this run and retried at the end"
+      notice_imgur_cap: "⛔ imgur API daily cap reached ({used}/{cap}) — remaining imgur URLs are deferred and will be picked up tomorrow"
       optimizer_disabled: "off"
       optimizer_unavailable: "unavailable (no GD) — files are stored exactly as downloaded"
       optimizer_summary: "{format}, quality {quality}, max {size}, minimum gain {gain}%"
@@ -319,6 +337,9 @@ ramon-mybb-migrator:
       dry_download: "  [dry-run] would download {url}"
       deferred: "⏳ deferred {url} — {error}"
       failed: "⚠ failed {url} — {error}"
+      queued: "↪ deferred to the end of the run {url} — {error}"
+      pending_start: "⏳ End of scan: retrying {count} URL(s) from {hosts} host(s) that did not answer earlier…"
+      pending_done: "  {recovered} of {count} deferred URL(s) recovered; the rest stay deferred for the next run."
       budget_hit: "⚠ Run budget reached — the scan stopped early. Run it again (with a higher cap) to carry on from here; nothing already downloaded is downloaded twice."
       failed_hint: "⚠ URLs that failed are recorded and not retried on their own (most are images really deleted at the source). Use --retry-failed to try them again."
       deferred_hint: "⏳ {count} URL(s) deferred by rate limiting (429) or a slow host — these are NOT lost images. Run the step again, without --retry-failed, and they will be tried again; if the host keeps answering 429, raise --host-delay."
@@ -333,6 +354,8 @@ ramon-mybb-migrator:
         skipped_host: skipped (other host)
         skipped_local: skipped (already local)
         skipped_failed: skipped (failed before)
+        queued: deferred to end of run (host not answering)
+        recovered: recovered at end of run
 
     attachments:
       uploads_detected: "MyBB uploads folder detected: {path}"

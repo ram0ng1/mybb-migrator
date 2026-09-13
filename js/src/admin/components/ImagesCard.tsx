@@ -68,7 +68,10 @@ export default class ImagesCard extends Component<Attrs> {
           <label>
             {trans("images.hosts")}
             {hostCount > 0 && (
-              <span className="MmMuted"> — {trans("images.hosts_count", { count: hostCount })}</span>
+              <span className="MmMuted">
+                {" "}
+                — {trans("images.hosts_count", { count: hostCount })}
+              </span>
             )}
           </label>
           {/* textarea, não input: a lista detectada passa de 400 hosts e uma
@@ -191,7 +194,9 @@ export default class ImagesCard extends Component<Attrs> {
         </div>
 
         {!media.webp_supported && (
-          <div className="MmAlert MmAlert--warn">{trans("images.no_webp_support")}</div>
+          <div className="MmAlert MmAlert--warn">
+            {trans("images.no_webp_support")}
+          </div>
         )}
 
         <div className="MmGrid">
@@ -203,6 +208,69 @@ export default class ImagesCard extends Component<Attrs> {
         <div className="MmHint">{trans("images.host_delay_hint")}</div>
 
         {this.exitIpsField()}
+        {this.imgurField(media)}
+      </div>
+    );
+  }
+
+  /**
+   * Credencial da API do imgur + teto diário.
+   *
+   * Sem ela o imgur é atacado "às cegas" (até cinco GETs por imagem chutando a
+   * extensão, e 429 em bloco). Com um Client-ID cada imagem é UMA chamada
+   * autenticada que devolve o link certo — e a cota do dia é conhecida, então
+   * o teto aqui existe para o run parar ANTES de o imgur bloquear a aplicação.
+   * O contador do dia aparece ao lado: é a primeira coisa a olhar quando um
+   * run começa a adiar tudo do imgur.
+   */
+  private imgurField(media: MediaConfig): Mithril.Children {
+    const configured = (this.form.imgur_client_id ?? "").trim() !== "";
+
+    return (
+      <div className="MmField MmField--wide">
+        <label>
+          {trans("images.imgur_client_id")}
+          {configured && media.imgur_used_today > 0 && (
+            <span className="MmMuted">
+              {" — "}
+              {trans("images.imgur_used_today", {
+                used: media.imgur_used_today.toLocaleString(),
+                cap:
+                  media.imgur_daily_cap > 0
+                    ? media.imgur_daily_cap.toLocaleString()
+                    : "∞",
+              })}
+            </span>
+          )}
+        </label>
+        <div className="MmDiscussion-row">
+          <input
+            className="FormControl"
+            type="text"
+            autocomplete="off"
+            spellcheck={false}
+            placeholder="546c25a59c58ad7"
+            title={trans("images.imgur_client_id")}
+            value={this.form.imgur_client_id ?? ""}
+            oninput={(e: InputEvent) =>
+              (this.form.imgur_client_id = (e.target as HTMLInputElement).value)
+            }
+          />
+          <input
+            className="FormControl MmImgurCap"
+            type="number"
+            min="0"
+            step="500"
+            title={trans("images.imgur_daily_cap")}
+            value={
+              (this.form.imgur_daily_cap as string | number | undefined) ?? ""
+            }
+            oninput={(e: InputEvent) =>
+              (this.form.imgur_daily_cap = (e.target as HTMLInputElement).value)
+            }
+          />
+        </div>
+        <div className="MmHint">{trans("images.imgur_hint")}</div>
       </div>
     );
   }
@@ -226,7 +294,10 @@ export default class ImagesCard extends Component<Attrs> {
         <label>
           {trans("images.exit_ips")}
           {exits > 0 && (
-            <span className="MmMuted"> — {trans("images.hosts_count", { count: exits })}</span>
+            <span className="MmMuted">
+              {" "}
+              — {trans("images.hosts_count", { count: exits })}
+            </span>
           )}
         </label>
         <textarea
@@ -258,6 +329,8 @@ export default class ImagesCard extends Component<Attrs> {
       image_host_delay: media.image_host_delay,
       image_retries: media.image_retries,
       image_exit_ips: media.image_exit_ips,
+      imgur_client_id: media.imgur_client_id,
+      imgur_daily_cap: media.imgur_daily_cap,
       attachments_dir: media.attachments_dir,
     };
     this.seeded = true;
@@ -283,7 +356,7 @@ export default class ImagesCard extends Component<Attrs> {
 
   private boolField(
     name: "image_optimize" | "image_webp",
-    labelKey: string
+    labelKey: string,
   ): Mithril.Children {
     return (
       <label className="MmOpt">
@@ -299,7 +372,10 @@ export default class ImagesCard extends Component<Attrs> {
     );
   }
 
-  private numberField(name: keyof ConnectionPayload, labelKey: string): Mithril.Children {
+  private numberField(
+    name: keyof ConnectionPayload,
+    labelKey: string,
+  ): Mithril.Children {
     return (
       <div className="MmField">
         <label>{trans(labelKey)}</label>
@@ -310,7 +386,9 @@ export default class ImagesCard extends Component<Attrs> {
           title={trans(labelKey)}
           value={(this.form[name] as string | number | undefined) ?? ""}
           oninput={(e: InputEvent) =>
-            ((this.form[name] as unknown) = (e.target as HTMLInputElement).value)
+            ((this.form[name] as unknown) = (
+              e.target as HTMLInputElement
+            ).value)
           }
         />
       </div>
@@ -325,12 +403,18 @@ export default class ImagesCard extends Component<Attrs> {
   private uploadWarning(media: MediaConfig): Mithril.Children {
     if (!media.map_table) {
       return (
-        <div className="MmAlert MmAlert--error">{trans("images.no_map_table")}</div>
+        <div className="MmAlert MmAlert--error">
+          {trans("images.no_map_table")}
+        </div>
       );
     }
     if (media.upload_table) return null;
 
-    return <div className="MmAlert MmAlert--warn">{trans("images.no_fof_upload")}</div>;
+    return (
+      <div className="MmAlert MmAlert--warn">
+        {trans("images.no_fof_upload")}
+      </div>
+    );
   }
 
   /**
@@ -342,7 +426,9 @@ export default class ImagesCard extends Component<Attrs> {
     const d = this.detection;
     if (!d) return null;
 
-    const shown = this.showAllHosts ? d.hosts.ranking : d.hosts.ranking.slice(0, 24);
+    const shown = this.showAllHosts
+      ? d.hosts.ranking
+      : d.hosts.ranking.slice(0, 24);
     const hidden = d.hosts.total_hosts - shown.length;
 
     return (
@@ -390,24 +476,30 @@ export default class ImagesCard extends Component<Attrs> {
           {trans("images.stats.images_ok")}: {stats.images_ok.toLocaleString()}
         </span>
         <span className="MmChip">
-          {trans("images.stats.images_failed")}: {stats.images_failed.toLocaleString()}
+          {trans("images.stats.images_failed")}:{" "}
+          {stats.images_failed.toLocaleString()}
         </span>
         {/* Adiadas só aparecem quando existem: um contador zerado de "volta
             sozinha" é ruído. */}
         {(stats.images_deferred > 0 || stats.attachments_deferred > 0) && (
           <span className="MmChip">
             {trans("images.stats.deferred")}:{" "}
-            {(stats.images_deferred + stats.attachments_deferred).toLocaleString()}
+            {(
+              stats.images_deferred + stats.attachments_deferred
+            ).toLocaleString()}
           </span>
         )}
         <span className="MmChip">
-          {trans("images.stats.attachments_ok")}: {stats.attachments_ok.toLocaleString()}
+          {trans("images.stats.attachments_ok")}:{" "}
+          {stats.attachments_ok.toLocaleString()}
         </span>
         <span className="MmChip">
           {trans("images.stats.attachments_failed")}:{" "}
           {stats.attachments_failed.toLocaleString()}
         </span>
-        <span className="MmChip">{trans("images.stats.disk")}: {mb} MB</span>
+        <span className="MmChip">
+          {trans("images.stats.disk")}: {mb} MB
+        </span>
       </div>
     );
   }

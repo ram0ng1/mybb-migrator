@@ -1,0 +1,63 @@
+name: CodeQL
+
+# §35.13 I2 — CodeQL (JS/TS). PHP não é suportado pelo CodeQL; a cobertura
+# de PHP é feita por PHPStan (ci.yml) e pelas regras Semgrep (security.yml).
+#
+# NOTA: code scanning em repositório privado exige GitHub Advanced Security.
+# Sem GHAS o passo `analyze` aborta com "Code scanning is not enabled". Os
+# passos `init`/`analyze` levam `continue-on-error: true` para não derrubar a
+# CI até o GHAS ser habilitado — quando for, o job volta a valer sozinho.
+# Enquanto isso, a cobertura SAST de JS/TS fica por conta do Semgrep
+# (security.yml: ruleset `p/javascript` + regras Flarum v2).
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '0 6 * * 1'  # toda segunda, 06:00 UTC
+
+# §35.13 C1 — default-deny.
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analisar (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript-typescript']
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40  # v2.20.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Inicializar CodeQL
+        # continue-on-error: requer GHAS em repo privado (ver nota no topo).
+        continue-on-error: true
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3  # v4.37.6
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+
+      - name: Analisar
+        # continue-on-error: requer GHAS em repo privado (ver nota no topo).
+        continue-on-error: true
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3  # v4.37.6
+        with:
+          category: "/language:${{ matrix.language }}"

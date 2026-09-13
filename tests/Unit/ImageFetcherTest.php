@@ -5,6 +5,7 @@ namespace Ramon\MybbMigrator\Tests\Unit;
 use PHPUnit\Framework\TestCase;
 use Ramon\MybbMigrator\Support\ExitPool;
 use Ramon\MybbMigrator\Support\ImageFetcher;
+use Ramon\MybbMigrator\Support\ImgurClient;
 
 /**
  * Só a parte pura do fetcher: a geração de URLs candidatas. É ela que resolve o
@@ -52,6 +53,151 @@ class ImageFetcherTest extends TestCase
         // Não são imagens diretas: chutar extensões só geraria 404s.
         $this->assertCount(1, $fetcher->candidates('https://imgur.com/a/qQGfe'));
         $this->assertCount(1, $fetcher->candidates('https://imgur.com/gallery/qQGfe'));
+    }
+
+    /**
+     * O caso relatado: o postimg de 2016 servia em `s20.postimg.org/<id>/<arquivo>`
+     * e o host morreu; hoje o MESMO id responde em `i.postimg.cc/<id>/<arquivo>`.
+     * A reescrita vem PRIMEIRO, porque a original é DNS morto e uma falha de
+     * conexão encerra a lista.
+     */
+    public function test_legacy_postimg_urls_are_rewritten_to_the_modern_host_first(): void
+    {
+        $fetcher = new ImageFetcher();
+
+        $this->assertSame(
+            ['https://i.postimg.cc/65kcb53xp/sotd_2_6_2016_1.jpg', 'http://s20.postimg.org/65kcb53xp/sotd_2_6_2016_1.jpg'],
+            $fetcher->candidates('http://s20.postimg.org/65kcb53xp/sotd_2_6_2016_1.jpg')
+        );
+
+        // Os outros hosts históricos da mesma família.
+        $this->assertSame('https://i.postimg.cc/abc123/x.png', $fetcher->candidates('http://s3.postimage.org/abc123/x.png')[0]);
+        $this->assertSame('https://i.postimg.cc/abc123/x.png', $fetcher->candidates('https://postimg.cc/abc123/x.png')[0]);
+        $this->assertSame('https://i.postimg.cc/abc123/x.png', $fetcher->candidates('http://s11.postimg.io/abc123/x.png')[0]);
+    }
+
+    public function test_modern_postimg_and_page_urls_are_left_alone(): void
+    {
+        $fetcher = new ImageFetcher();
+
+        // Já é o host atual: nada a reescrever.
+        $this->assertSame(['https://i.postimg.cc/6q4vKG0s/576-07-04.jpg'], $fetcher->candidates('https://i.postimg.cc/6q4vKG0s/576-07-04.jpg'));
+        // Página /image/<id>/ não diz o nome do arquivo — sem ele não há URL.
+        $this->assertSame(['https://postimg.org/image/65kcb53xp/'], $fetcher->candidates('https://postimg.org/image/65kcb53xp/'));
+    }
+
+    public function test_imgur_ids_are_recognised_including_size_suffixes(): void
+    {
+        $fetcher = new ImageFetcher();
+
+        $this->assertSame('T1Ji3QD', $fetcher->imgurId('https://i.imgur.com/T1Ji3QD.jpg'));
+        $this->assertSame('T1Ji3QD', $fetcher->imgurId('https://imgur.com/T1Ji3QD'));
+        // `...l` (large) e `...s` (small) são a MESMA imagem para a API.
+        $this->assertSame('T1Ji3QD', $fetcher->imgurId('https://i.imgur.com/T1Ji3QDl.jpg'));
+        $this->assertNull($fetcher->imgurId('https://imgur.com/a/qQGfe'));
+        $this->assertNull($fetcher->imgurId('https://example.com/T1Ji3QD.jpg'));
+    }
+
+    /**
+     * Cota esgotada: nada de rede — e a falha é TRANSITÓRIA (volta amanhã),
+     * nunca `failed`.
+     */
+    public function test_an_exhausted_imgur_quota_defers_without_touching_the_network(): void
+    {
+        $client = new ImgurClient('id', 1, ImgurClient::today() . '|1');
+        $notices = [];
+
+        $res = (new ImageFetcher(retries: 0, hostDelayMs: 0))
+            ->withImgur($client)
+            ->onNotice(function (array $n) use (&$notices): void {
+                $notices[] = $n;
+            })
+            ->fetchImage('https://i.imgur.com/T1Ji3QD.jpg');
+
+        $this->assertFalse($res['ok']);
+        $this->assertTrue($res['transient']);
+        $this->assertFalse($res['defer'], 'cota não é "host fora do ar": não vai para a fila do fim do run');
+        $this->assertStringContainsString('cota diária', (string) $res['error']);
+        $this->assertSame(1, $client->usedToday(), 'nenhuma chamada foi gasta');
+        $this->assertCount(1, $notices);
+        $this->assertSame('imgur_cap', $notices[0]['kind']);
+    }
+
+    public function test_an_unconfigured_imgur_client_is_ignored(): void
+    {
+        $fetcher = (new ImageFetcher())->withImgur(new ImgurClient(''));
+
+        $this->assertNull($fetcher->imgur());
+    }
+
+    /**
+     * Host que não atende: com o adiamento ligado, a PRIMEIRA falha de conexão
+     * já volta marcada `defer` (sem gastar retentativas), e a segunda desarma o
+     * host — a partir daí as URLs dele voltam sem rede.
+     */
+    public function test_connection_failures_are_deferred_and_trip_the_host(): void
+    {
+        if (! function_exists('curl_init')) {
+            $this->markTestSkipped('sem extensão curl');
+        }
+
+        $retries = 0;
+        $notices = [];
+
+        $fetcher = (new ImageFetcher(timeout: 2, maxBytes: 4096, retries: 3, hostDelayMs: 0))
+            ->deferConnectionFailures()
+            ->onRetry(function () use (&$retries): void {
+                $retries++;
+            })
+            ->onNotice(function (array $n) use (&$notices): void {
+                $notices[] = $n;
+            });
+
+        // Porta fechada no loopback: conexão recusada na hora (errno 7).
+        $first = $fetcher->fetchImage('http://127.0.0.1:1/a.jpg');
+        $this->assertFalse($first['ok']);
+        $this->assertTrue($first['transient']);
+        $this->assertTrue($first['defer']);
+        $this->assertSame(0, $retries, 'nenhuma retentativa inline');
+        $this->assertSame([], $fetcher->trippedHosts(), 'uma falha ainda não desarma');
+
+        $second = $fetcher->fetchImage('http://127.0.0.1:1/b.jpg');
+        $this->assertTrue($second['defer']);
+        $this->assertSame(['127.0.0.1'], $fetcher->trippedHosts());
+        $this->assertCount(1, $notices);
+        $this->assertSame('host_tripped', $notices[0]['kind']);
+
+        $third = $fetcher->fetchImage('http://127.0.0.1:1/c.jpg');
+        $this->assertTrue($third['defer']);
+        $this->assertStringContainsString('pulado', (string) $third['error']);
+
+        // Rearmado, o host volta a ser tentado de verdade.
+        $fetcher->resetHosts();
+        $this->assertSame([], $fetcher->trippedHosts());
+    }
+
+    /**
+     * Com o adiamento DESLIGADO (--no-defer, ou a passada final), o
+     * comportamento antigo: retentativas inline até o host desarmar.
+     */
+    public function test_without_deferral_connection_failures_are_retried_inline_until_the_host_trips(): void
+    {
+        if (! function_exists('curl_init')) {
+            $this->markTestSkipped('sem extensão curl');
+        }
+
+        $retries = 0;
+
+        $res = (new ImageFetcher(timeout: 2, maxBytes: 4096, retries: 5, hostDelayMs: 0))
+            ->onRetry(function () use (&$retries): void {
+                $retries++;
+            })
+            ->fetchImage('http://127.0.0.1:1/a.jpg');
+
+        // Duas falhas seguidas desarmam o host e cortam as retentativas ali.
+        $this->assertSame(1, $retries);
+        $this->assertTrue($res['transient']);
+        $this->assertTrue($res['defer']);
     }
 
     public function test_extension_is_derived_from_the_mime_type(): void

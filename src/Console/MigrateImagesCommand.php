@@ -39,6 +39,15 @@ use Symfony\Component\Console\Input\InputOption;
  *  - `--relink-only`: nenhum acesso à rede; só reaplica o mapa já existente —
  *    use depois de `mybb:rebuild-formatting`, que regenera os posts a partir do
  *    MyBB e devolveria as URLs remotas.
+ *  - host que NÃO ATENDE (DNS morto, conexão recusada) não segura a varredura:
+ *    a URL vai para uma fila e volta a ser tentada no FIM do run, com as
+ *    retentativas normais; e depois de 2 falhas seguidas o host inteiro passa a
+ *    ser pulado sem rede (ver ImageFetcher). `--no-defer` restaura a
+ *    retentativa inline.
+ *  - imgur com Client-ID (aba Imagens ou `--imgur-client-id`): cada imagem é
+ *    resolvida por UMA chamada autenticada, com teto diário (`--imgur-daily-cap`,
+ *    padrão 10.000) que persiste entre runs; esgotado, o resto do imgur fica
+ *    `deferred` até o dia seguinte.
  *
  * O conteúdo do post é XML do s9e/TextFormatter, então a troca é textual sobre a
  * forma JÁ ESCAPADA da URL: isso cobre de uma vez o atributo `src` e o token
@@ -63,7 +72,22 @@ class MigrateImagesCommand extends AbstractCommand
     private int $failed = 0;
     /** Falhas TRANSITÓRIAS (429/timeout/5xx): voltam sozinhas na próxima execução. */
     private int $deferred = 0;
+    /** URLs de host que não atendeu, empurradas para o fim do run. */
+    private int $queued = 0;
+    /** Quantas das empurradas foram baixadas na passada final. */
+    private int $recovered = 0;
     private int $bytes = 0;
+
+    /**
+     * Fila da passada final: o que falhou por CONEXÃO durante a varredura. Cada
+     * item guarda o bastante para refazer o download e reescrever o post.
+     *
+     * @var array<int, array{url: string, escaped: string, post: int, user: ?int, discussion: int}>
+     */
+    private array $pending = [];
+
+    /** Estamos na varredura (adiar) ou na passada final (tentar de verdade)? */
+    private bool $collecting = true;
     /** Imagens re-encodadas (webp/redimensionadas) e bytes poupados por isso. */
     private int $optimized = 0;
     private int $savedBytes = 0;
@@ -103,7 +127,7 @@ class MigrateImagesCommand extends AbstractCommand
             ->addOption('retry-failed', null, InputOption::VALUE_NONE, 'Try URLs previously recorded as failed again.')
             ->addOption('relink-only', null, InputOption::VALUE_NONE, 'No network: only re-apply URLs already downloaded.')
             ->addOption('timeout', null, InputOption::VALUE_REQUIRED, 'Idle timeout per request, in seconds: a download that keeps progressing is no longer killed.');
-        $this->addMediaFetchOptions();
+        $this->addMediaFetchOptions(network: true, imgur: true);
         $this->addLocaleOption();
     }
 
@@ -317,7 +341,7 @@ class MigrateImagesCommand extends AbstractCommand
                     }
 
                     $this->attempted++;
-                    $local = $this->download($fetcher, $optimizer, $rawUrl, $dryRun, (int) $row->id, $row->user_id === null ? null : (int) $row->user_id, (int) $row->discussion_id, $map);
+                    $local = $this->download($fetcher, $optimizer, $rawUrl, (string) $escaped, $dryRun, (int) $row->id, $row->user_id === null ? null : (int) $row->user_id, (int) $row->discussion_id, $map);
 
                     if ($local !== null) {
                         $replacements[(string) $escaped] = $local;
@@ -364,6 +388,9 @@ class MigrateImagesCommand extends AbstractCommand
         }, 'id');
 
         $this->publishProgress($this->scanned, $total);
+
+        // O que ficou para o fim: hosts que não atenderam durante a varredura.
+        $this->retryPending($fetcher, $optimizer, $map);
 
         // Fecha o passo já com a proteção aplicada. Deixar isso para um comando
         // avulso significa que, entre o fim da importação e alguém lembrar de
@@ -448,6 +475,7 @@ class MigrateImagesCommand extends AbstractCommand
         ImageFetcher $fetcher,
         ImageOptimizer $optimizer,
         string $url,
+        string $escaped,
         bool $dryRun,
         int $postId,
         ?int $actorId,
@@ -462,6 +490,28 @@ class MigrateImagesCommand extends AbstractCommand
         }
 
         $res = $fetcher->fetchImage($url);
+
+        // Host que não atendeu (DNS morto, conexão recusada) durante a
+        // varredura: em vez de segurar tudo retentando, a URL entra na fila do
+        // fim do run. Fica gravada como `deferred` desde já — se o processo
+        // morrer antes da passada final, ela volta no próximo run mesmo assim.
+        if (! $res['ok'] && ($res['defer'] ?? false) && $this->collecting) {
+            $this->queued++;
+            $this->pending[] = [
+                'url'        => $url,
+                'escaped'    => $escaped,
+                'post'       => $postId,
+                'user'       => $actorId,
+                'discussion' => $discussionId,
+            ];
+            $this->info($this->trans('images.queued', [
+                'url'   => $url,
+                'error' => $res['error'] ?? $this->trans('common.unknown_error'),
+            ]));
+            $this->remember($url, ['status' => 'deferred', 'error' => $res['error'], 'local_url' => null], $map);
+
+            return null;
+        }
 
         if (! $res['ok']) {
             // `transient` = o host recusou (429) ou demorou, NÃO que a imagem
@@ -547,6 +597,81 @@ class MigrateImagesCommand extends AbstractCommand
         ], $map);
 
         return $localUrl;
+    }
+
+    /**
+     * Passada final sobre as URLs cujo host não atendeu durante a varredura.
+     *
+     * Agora sim com as retentativas inline: a varredura já andou, então esperar
+     * aqui não segura mais nada. Os hosts são rearmados antes — cada um ganha
+     * de novo as suas 2 chances; se continuar morto, as URLs seguintes dele
+     * voltam na hora (sem rede) e ficam `deferred` para o próximo run.
+     *
+     * Os posts são reescritos AQUI, e não no laço principal, porque na hora em
+     * que foram varridos ainda não havia URL local para eles.
+     *
+     * @param array<string, array<string, mixed>> $map
+     */
+    private function retryPending(ImageFetcher $fetcher, ImageOptimizer $optimizer, array &$map): void
+    {
+        if ($this->pending === []) {
+            return;
+        }
+
+        $this->collecting = false;
+        $fetcher->deferConnectionFailures(false)->resetHosts();
+
+        $hosts = [];
+        foreach ($this->pending as $item) {
+            $hosts[strtolower((string) parse_url($item['url'], PHP_URL_HOST))] = true;
+        }
+
+        $this->info($this->trans('images.pending_start', [
+            'count' => count($this->pending),
+            'hosts' => count($hosts),
+        ]));
+
+        /** @var array<int, array<string, string>> $byPost post_id => [escaped => local] */
+        $byPost = [];
+
+        foreach ($this->pending as $item) {
+            $local = $this->download(
+                $fetcher,
+                $optimizer,
+                $item['url'],
+                $item['escaped'],
+                false,
+                $item['post'],
+                $item['user'],
+                $item['discussion'],
+                $map
+            );
+
+            if ($local !== null) {
+                $this->recovered++;
+                $byPost[$item['post']][$item['escaped']] = $local;
+            }
+        }
+
+        foreach ($byPost as $postId => $replacements) {
+            $content = (string) ($this->db->table('posts')->where('id', $postId)->value('content') ?? '');
+            if ($content === '') {
+                continue;
+            }
+
+            $new = strtr($content, $this->escapeTargets($replacements));
+            if ($new !== $content) {
+                $this->db->table('posts')->where('id', $postId)->update(['content' => $new]);
+                $this->postsUpdated++;
+            }
+        }
+
+        $this->pending = [];
+
+        $this->info($this->trans('images.pending_done', [
+            'recovered' => $this->recovered,
+            'count'     => $this->queued,
+        ]));
     }
 
     /**
@@ -740,6 +865,10 @@ class MigrateImagesCommand extends AbstractCommand
         $this->stat('images.stats.skipped_failed', $this->skippedFailed);
         $this->stat('common.stats.failed', $this->failed);
         $this->stat('common.stats.deferred', $this->deferred);
+        if ($this->queued > 0) {
+            $this->stat('images.stats.queued', $this->queued);
+            $this->stat('images.stats.recovered', $this->recovered);
+        }
 
         if ($this->budgetHit) {
             $this->info($this->trans('images.budget_hit'));

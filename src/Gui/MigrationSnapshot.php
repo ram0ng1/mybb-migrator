@@ -8,6 +8,7 @@ use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Database\ConnectionInterface;
 use Ramon\MybbMigrator\MybbDatabase;
 use Ramon\MybbMigrator\Support\ImageStore;
+use Ramon\MybbMigrator\Support\ImgurClient;
 
 /**
  * Contagens de origem (MyBB) e destino (Flarum) + pré-checagem de extensões,
@@ -63,6 +64,11 @@ class MigrationSnapshot
             'image_host_delay'  => (int) ($this->settings->get('mybb-migrator.image_host_delay') ?? 350),
             'image_retries'     => (int) ($this->settings->get('mybb-migrator.image_retries') ?? 3),
             'image_exit_ips'    => (string) ($this->settings->get('mybb-migrator.image_exit_ips') ?? ''),
+            // imgur autenticado: credencial, teto/dia e quanto do dia já foi
+            // gasto (UTC) — é o que explica um run que adia tudo do imgur.
+            'imgur_client_id'   => (string) ($this->settings->get('mybb-migrator.imgur_client_id') ?? ''),
+            'imgur_daily_cap'   => (int) ($this->settings->get('mybb-migrator.imgur_daily_cap') ?? ImgurClient::DEFAULT_DAILY_CAP),
+            'imgur_used_today'  => ImgurClient::usedIn($this->settings->get('mybb-migrator.imgur_quota')),
             // Sem GD com libwebp o comando grava o formato de origem; o painel
             // avisa em vez de prometer uma conversão que não vai acontecer.
             'webp_supported'    => function_exists('imagewebp'),
