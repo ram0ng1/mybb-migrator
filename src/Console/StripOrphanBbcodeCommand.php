@@ -4,6 +4,7 @@ namespace Ramon\MybbMigrator\Console;
 
 use Flarum\Console\AbstractCommand;
 use Illuminate\Database\ConnectionInterface;
+use Ramon\MybbMigrator\Support\OrphanBbcode;
 use Symfony\Component\Console\Input\InputOption;
 
 /**
@@ -17,8 +18,6 @@ use Symfony\Component\Console\Input\InputOption;
  */
 class StripOrphanBbcodeCommand extends AbstractCommand
 {
-    private const TAG_LIST = 'b|i|u|s|strike|del|ins|color|font|size|align|center|left|right|justify|hr|indent|mention|sub|sup';
-
     public function __construct(protected ConnectionInterface $db)
     {
         parent::__construct();
@@ -84,40 +83,10 @@ class StripOrphanBbcodeCommand extends AbstractCommand
     }
 
     /**
-     * Estratégia: preserva o conteúdo de `<s>...</s>` (fonte original do s9e),
-     * `<CODE>...</CODE>` e `<URL>...</URL>` (que podem ter `[bbcode]` legítimo),
-     * faz strip nas demais regiões usando um delimitador placeholder, e
-     * recompõe.
+     * A lógica pura vive em `Support\OrphanBbcode` (testável sem o Flarum).
      */
     public static function strip(string $xml): string
     {
-        $protected = [];
-        $placeholderTpl = "\x00PROTECTED_%d\x00";
-
-        $protect = static function (string $s) use (&$protected, $placeholderTpl): string {
-            $key = sprintf($placeholderTpl, count($protected));
-            $protected[] = $s;
-            return $key;
-        };
-
-        $xml = preg_replace_callback('#<s>.*?</s>#s', static fn (array $m): string => $protect($m[0]), $xml) ?? $xml;
-        $xml = preg_replace_callback('#<e>.*?</e>#s', static fn (array $m): string => $protect($m[0]), $xml) ?? $xml;
-        $xml = preg_replace_callback('#<CODE\b.*?</CODE>#s', static fn (array $m): string => $protect($m[0]), $xml) ?? $xml;
-        $xml = preg_replace_callback('#<URL\b.*?</URL>#s', static fn (array $m): string => $protect($m[0]), $xml) ?? $xml;
-
-        $xml = (string) preg_replace('#\[/?(?:' . self::TAG_LIST . ')\b[^\]]*\]#i', '', $xml);
-
-        // url/img: só os marcadores SEM dado — `[/url]`, `[img]`, `[/img]` órfãos
-        // (sobra de aninhamento malformado do MyBB, ex.: `…[/IMG][/URL][/img]`).
-        // `[url=...]` de ABERTURA NÃO é removido (carrega a URL); o conteúdo
-        // legítimo já está protegido em <URL>/<s>/<e>.
-        $xml = (string) preg_replace('#\[/url\]#i', '', $xml);
-        $xml = (string) preg_replace('#\[/?img\]#i', '', $xml);
-
-        foreach ($protected as $i => $original) {
-            $xml = str_replace(sprintf($placeholderTpl, $i), $original, $xml);
-        }
-
-        return $xml;
+        return OrphanBbcode::strip($xml);
     }
 }
