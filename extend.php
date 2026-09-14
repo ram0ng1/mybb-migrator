@@ -13,6 +13,7 @@ use Ramon\MybbMigrator\Api\Controller\StatusController;
 use Ramon\MybbMigrator\Api\Controller\TestConnectionController;
 use Ramon\MybbMigrator\Auth\MybbPasswordChecker;
 use Ramon\MybbMigrator\Console\FixCharsetCommand;
+use Ramon\MybbMigrator\Console\FixControlCharsCommand;
 use Ramon\MybbMigrator\Console\GuiRunCommand;
 use Ramon\MybbMigrator\Console\FixDiscussionSlugsCommand;
 use Ramon\MybbMigrator\Console\FixEmojisCommand;
@@ -170,6 +171,7 @@ return [
         ->command(FixPseudoListsCommand::class)
         ->command(FixFontBbcodeCommand::class)
         ->command(StripOrphanBbcodeCommand::class)
+        ->command(FixControlCharsCommand::class)
         ->command(RebuildFormattingCommand::class)
         ->command(FixSpacingCommand::class)
         ->command(MakeAdminCommand::class)

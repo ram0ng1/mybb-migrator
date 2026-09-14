@@ -16,3 +16,5 @@ require __DIR__ . '/../src/Console/MessagesGrouping.php';
 require __DIR__ . '/../src/BBCode/Converter.php';
 require __DIR__ . '/../src/Support/ExitPool.php';
 require __DIR__ . '/../src/Support/ImgurClient.php';
+require __DIR__ . '/../src/Support/OrphanBbcode.php';
+require __DIR__ . '/../src/Support/XmlText.php';
