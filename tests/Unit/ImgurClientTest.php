@@ -126,4 +126,72 @@ class ImgurClientTest extends TestCase
         $this->assertFalse($res['not_found'], 'um 5xx não pode aposentar a URL como imagem morta');
         $this->assertNotNull($res['error']);
     }
+
+    /**
+     * `/3/credits` é o único lugar em que o imgur diz "Invalid client_id" com
+     * todas as letras (403). Em `/3/image/<id>` a mesma chave leva 429 +
+     * ClientRemaining 0, indistinguível de cota esgotada.
+     */
+    public function test_credits_403_marks_the_client_id_invalid_for_good(): void
+    {
+        $client = new ImgurClient('wrong', 10000);
+
+        $res = $client->parseCredits(403, (string) json_encode(['data' => ['error' => 'Invalid client_id', 'request' => '/3/credits', 'method' => 'GET'], 'success' => false, 'status' => 403]));
+
+        $this->assertFalse($res['ok']);
+        $this->assertTrue($res['invalid']);
+        $this->assertStringContainsString('Invalid client_id', (string) $res['error']);
+        $this->assertFalse($client->invalid(), 'parseCredits só lê; quem chama decide desligar');
+
+        $client->markInvalid();
+        $this->assertTrue($client->invalid());
+        $this->assertTrue($client->exhausted(), 'chave recusada = nada mais é consultado');
+        $this->assertSame(0, $client->remaining());
+        $this->assertSame(0, $client->usedToday(), 'o pré-voo não conta na cota');
+    }
+
+    public function test_credits_200_reports_what_imgur_says_is_left(): void
+    {
+        $client = new ImgurClient('id', 10000);
+
+        $res = $client->parseCredits(200, (string) json_encode(['data' => ['UserLimit' => 500, 'UserRemaining' => 500, 'UserReset' => 1789514547, 'ClientLimit' => 12500, 'ClientRemaining' => 12345], 'success' => true, 'status' => 200]));
+
+        $this->assertTrue($res['ok']);
+        $this->assertFalse($res['invalid']);
+        $this->assertSame(12345, $res['remaining']);
+        $this->assertSame(12500, $res['limit']);
+        $this->assertSame(12345, $client->remoteRemaining());
+        $this->assertFalse($client->exhausted());
+    }
+
+    public function test_credits_with_zero_remaining_ends_the_day(): void
+    {
+        $client = new ImgurClient('id', 10000);
+
+        $res = $client->parseCredits(200, (string) json_encode(['data' => ['ClientLimit' => 12500, 'ClientRemaining' => 0], 'success' => true, 'status' => 200]));
+
+        $this->assertTrue($res['ok'], 'a credencial foi aceita — é a cota que acabou');
+        $this->assertTrue($client->remoteExhausted());
+        $this->assertTrue($client->exhausted());
+    }
+
+    public function test_an_unexpected_credits_response_is_neither_ok_nor_invalid(): void
+    {
+        $res = (new ImgurClient('id'))->parseCredits(502, '<html>bad gateway</html>');
+
+        $this->assertFalse($res['ok']);
+        $this->assertFalse($res['invalid'], 'um 5xx no pré-voo não pode condenar a chave');
+    }
+
+    /**
+     * O 429 que vem com `ClientRemaining: 0` não passa com backoff: é a cota da
+     * aplicação (ou chave desconhecida). O fetcher usa isto para não retentar.
+     */
+    public function test_client_quota_gone_is_read_from_the_headers(): void
+    {
+        $this->assertTrue(ImgurClient::clientQuotaGone(['x-ratelimit-clientremaining' => '0']));
+        $this->assertFalse(ImgurClient::clientQuotaGone(['x-ratelimit-clientremaining' => '499']));
+        $this->assertFalse(ImgurClient::clientQuotaGone(['x-ratelimit-userremaining' => '0']), 'limite por IP volta em uma hora: esse vale retentar');
+        $this->assertFalse(ImgurClient::clientQuotaGone([]));
+    }
 }

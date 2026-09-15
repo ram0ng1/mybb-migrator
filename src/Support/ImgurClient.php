@@ -37,6 +37,15 @@ final class ImgurClient
 {
     public const API = 'https://api.imgur.com/3/image/';
 
+    /**
+     * Pré-voo da credencial. NÃO conta na cota, e é o único endpoint que
+     * distingue com clareza "Client-ID inválido" (403 `Invalid client_id`) de
+     * "cota acabou": em `/3/image/<id>` o imgur responde 429 com
+     * `X-RateLimit-ClientRemaining: 0` para os DOIS casos — e um run que só
+     * olhasse ali gastaria minutos de backoff numa chave que nunca vai passar.
+     */
+    public const CREDITS = 'https://api.imgur.com/3/credits';
+
     /** Teto padrão de chamadas/dia — abaixo dos ~12.500 que o imgur concede. */
     public const DEFAULT_DAILY_CAP = 10000;
 
@@ -53,6 +62,15 @@ final class ImgurClient
 
     /** Segundos até a cota da aplicação zerar, quando o imgur informou. */
     private ?int $remoteReset = null;
+
+    /** Chamadas que o IMGUR diz restarem à aplicação (último cabeçalho/credits). */
+    private ?int $remoteRemaining = null;
+
+    /**
+     * O imgur recusou a credencial de vez (403 `Invalid client_id`). Diferente
+     * da cota: não zera à meia-noite — uma chave errada continua errada.
+     */
+    private bool $invalid = false;
 
     /** @var null|callable(string): void */
     private $save;
@@ -103,7 +121,7 @@ final class ImgurClient
     /** Quantas chamadas ainda cabem hoje; PHP_INT_MAX quando não há teto. */
     public function remaining(): int
     {
-        if ($this->remoteExhausted) {
+        if ($this->invalid || $this->remoteExhausted) {
             return 0;
         }
 
@@ -129,6 +147,40 @@ final class ImgurClient
     public function remoteReset(): ?int
     {
         return $this->remoteReset;
+    }
+
+    public function remoteRemaining(): ?int
+    {
+        return $this->remoteRemaining;
+    }
+
+    /** O imgur recusou a credencial (403 em `/3/credits`)? */
+    public function invalid(): bool
+    {
+        return $this->invalid;
+    }
+
+    /** Declara a credencial recusada: a partir daqui nada mais é consultado. */
+    public function markInvalid(): void
+    {
+        $this->invalid = true;
+    }
+
+    /**
+     * O imgur disse que a cota da APLICAÇÃO acabou. Também é o que ele responde
+     * a um Client-ID desconhecido em `/3/image/<id>` — por isso o pré-voo em
+     * `/3/credits` existe.
+     */
+    public function markRemoteExhausted(?int $reset = null): void
+    {
+        $this->remoteExhausted = true;
+        $this->remoteRemaining = 0;
+        $this->remoteReset = $reset;
+    }
+
+    public function creditsEndpoint(): string
+    {
+        return self::CREDITS;
     }
 
     /**
@@ -171,14 +223,97 @@ final class ImgurClient
      */
     public function observe(array $headers): void
     {
-        $remaining = $headers['x-ratelimit-clientremaining'] ?? null;
-
-        if ($remaining !== null && ctype_digit(trim((string) $remaining)) && (int) $remaining <= 0) {
-            $this->remoteExhausted = true;
-
-            $reset = $headers['x-ratelimit-clientreset'] ?? null;
-            $this->remoteReset = $reset !== null && ctype_digit(trim((string) $reset)) ? (int) $reset : null;
+        $remaining = self::digits($headers['x-ratelimit-clientremaining'] ?? null);
+        if ($remaining === null) {
+            return;
         }
+
+        $this->remoteRemaining = $remaining;
+
+        if ($remaining <= 0) {
+            $this->markRemoteExhausted(self::digits($headers['x-ratelimit-clientreset'] ?? null));
+        }
+    }
+
+    /**
+     * Um 429 acompanhado de `X-RateLimit-ClientRemaining: 0` é a cota da
+     * APLICAÇÃO (ou uma credencial desconhecida) — nada que backoff resolva
+     * dentro deste run. Quem retenta usa isto para parar na primeira.
+     *
+     * @param array<string, string> $headers nomes em minúsculas
+     */
+    public static function clientQuotaGone(array $headers): bool
+    {
+        $remaining = self::digits($headers['x-ratelimit-clientremaining'] ?? null);
+
+        return $remaining !== null && $remaining <= 0;
+    }
+
+    /**
+     * Interpreta a resposta de `/3/credits` (o pré-voo).
+     *
+     *  - ok: credencial aceita; `remaining`/`limit` são o que o imgur diz da
+     *    cota da aplicação HOJE (independente do nosso contador).
+     *  - invalid: 401/403 — o imgur não conhece este Client-ID.
+     *  - nem um nem outro: resposta inesperada (rede, 5xx, 429); quem chama
+     *    decide se segue sem a verificação.
+     *
+     * @return array{ok: bool, invalid: bool, remaining: ?int, limit: ?int, error: ?string}
+     */
+    public function parseCredits(int $status, string $body): array
+    {
+        $json = json_decode($body, true);
+        $data = is_array($json) ? ($json['data'] ?? null) : null;
+        $message = is_array($data) && isset($data['error'])
+            ? (is_string($data['error']) ? $data['error'] : json_encode($data['error']))
+            : null;
+
+        if ($status === 401 || $status === 403) {
+            return [
+                'ok'        => false,
+                'invalid'   => true,
+                'remaining' => null,
+                'limit'     => null,
+                'error'     => 'imgur API: Client-ID recusado (HTTP ' . $status . ($message ? ', ' . $message : '') . ')',
+            ];
+        }
+
+        if ($status === 200 && is_array($json) && ($json['success'] ?? false) === true && is_array($data)) {
+            $remaining = self::digits($data['ClientRemaining'] ?? null);
+            $limit = self::digits($data['ClientLimit'] ?? null);
+
+            if ($remaining !== null) {
+                $this->remoteRemaining = $remaining;
+                if ($remaining <= 0) {
+                    $this->markRemoteExhausted($this->remoteReset);
+                }
+            }
+
+            return ['ok' => true, 'invalid' => false, 'remaining' => $remaining, 'limit' => $limit, 'error' => null];
+        }
+
+        return [
+            'ok'        => false,
+            'invalid'   => false,
+            'remaining' => null,
+            'limit'     => null,
+            'error'     => 'imgur API: resposta inesperada em /3/credits (HTTP ' . $status . ($message ? ', ' . $message : '') . ')',
+        ];
+    }
+
+    /** Inteiro não negativo de um cabeçalho/campo, ou null quando não é número. */
+    private static function digits(mixed $raw): ?int
+    {
+        if (is_int($raw)) {
+            return max(0, $raw);
+        }
+        if (is_float($raw)) {
+            return max(0, (int) $raw);
+        }
+
+        $raw = is_string($raw) ? trim($raw) : '';
+
+        return $raw !== '' && ctype_digit($raw) ? (int) $raw : null;
     }
 
     /**
@@ -269,6 +404,8 @@ final class ImgurClient
             $this->used = 0;
             $this->remoteExhausted = false;
             $this->remoteReset = null;
+            $this->remoteRemaining = null;
+            // `invalid` fica: uma chave recusada não passa a valer amanhã.
         }
     }
 
