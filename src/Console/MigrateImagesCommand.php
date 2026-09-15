@@ -225,6 +225,11 @@ class MigrateImagesCommand extends AbstractCommand
         $this->info($this->trans('common.line_network', ['summary' => $this->describeFetch($this->settings, $timeout)]));
         $this->info($this->trans('common.line_optimize', ['summary' => $this->describeOptimizer($optimizer)]));
 
+        // Só quando vai haver download: `--relink-only` não toca a rede.
+        if (! $relinkOnly) {
+            $this->preflightImgur($fetcher);
+        }
+
         if (! $this->store->uploadTableAvailable()) {
             $this->info($this->trans('images.no_upload_table'));
         }

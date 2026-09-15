@@ -124,6 +124,44 @@ class ImageFetcherTest extends TestCase
     }
 
     /**
+     * Client-ID recusado no pré-voo: nenhuma imagem do imgur toca a rede, o
+     * aviso é o de credencial (não o de cota), e a falha é transitória — a
+     * imagem provavelmente existe; é a chave que está errada.
+     */
+    public function test_an_invalid_imgur_client_id_defers_without_touching_the_network(): void
+    {
+        $client = new ImgurClient('wrong', 10000);
+        $client->markInvalid();
+        $notices = [];
+
+        $fetcher = (new ImageFetcher(retries: 0, hostDelayMs: 0))
+            ->withImgur($client)
+            ->onNotice(function (array $n) use (&$notices): void {
+                $notices[] = $n;
+            });
+
+        $first = $fetcher->fetchImage('https://i.imgur.com/T1Ji3QD.jpg');
+        $second = $fetcher->fetchImage('https://imgur.com/um4r8CZ');
+
+        $this->assertFalse($first['ok']);
+        $this->assertTrue($first['transient']);
+        $this->assertStringContainsString('Client-ID recusado', (string) $first['error']);
+        $this->assertFalse($second['ok']);
+        $this->assertSame(0, $client->usedToday(), 'nenhuma chamada foi gasta');
+        $this->assertCount(1, $notices, 'o aviso sai uma vez por run, não por imagem');
+        $this->assertSame('imgur_invalid', $notices[0]['kind']);
+    }
+
+    /**
+     * Sem credencial configurada não há o que verificar.
+     */
+    public function test_verify_imgur_is_a_no_op_without_a_client(): void
+    {
+        $this->assertNull((new ImageFetcher())->verifyImgur());
+        $this->assertNull((new ImageFetcher())->withImgur(new ImgurClient(''))->verifyImgur());
+    }
+
+    /**
      * TLS verificado por padrão: desligar tem de ser um pedido explícito
      * (--insecure), nunca o estado inicial.
      */

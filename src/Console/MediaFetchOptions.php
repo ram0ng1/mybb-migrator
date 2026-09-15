@@ -149,6 +149,7 @@ trait MediaFetchOptions
                 $this->info($this->trans(match ($notice['kind']) {
                     'imgur_cap'        => 'common.notice_imgur_cap',
                     'imgur_remote_cap' => 'common.notice_imgur_remote_cap',
+                    'imgur_invalid'    => 'common.notice_imgur_invalid',
                     default            => 'common.notice_host_tripped',
                 }, $notice));
             })
@@ -166,6 +167,40 @@ trait MediaFetchOptions
             ->onExitDown(function (array $down): void {
                 $this->info($this->trans('common.exit_down', $down));
             });
+    }
+
+    /**
+     * Confere o Client-ID do imgur ANTES do primeiro download (uma chamada a
+     * `/3/credits`, fora da cota). O motivo é o run que abriu com "imgur API
+     * on (0/10000)" e passou dois minutos em `↻ 429 · retry 6/6` na primeira
+     * imagem: o imgur responde 429 + ClientRemaining 0 a um Client-ID
+     * desconhecido, e só `/3/credits` diz "Invalid client_id" com todas as
+     * letras. Credencial recusada ou cota zerada já saem como aviso pelo
+     * onNotice do fetcher; aqui só entra a linha do caso bom (quanto o imgur
+     * diz que resta hoje) e a do "não deu para verificar".
+     */
+    protected function preflightImgur(ImageFetcher $fetcher): void
+    {
+        $imgur = $fetcher->imgur();
+        if ($imgur === null) {
+            return;
+        }
+
+        $check = $fetcher->verifyImgur();
+        if ($check === null || $check['invalid'] || $imgur->remoteExhausted()) {
+            return; // o aviso já foi impresso pelo onNotice
+        }
+
+        if (! $check['ok']) {
+            $this->info($this->trans('common.imgur_verify_failed', ['error' => (string) $check['error']]));
+
+            return;
+        }
+
+        $this->info($this->trans('common.imgur_verified', [
+            'remaining' => $check['remaining'] ?? '?',
+            'limit'     => $check['limit'] ?? '?',
+        ]));
     }
 
     /**

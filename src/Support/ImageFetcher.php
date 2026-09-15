@@ -516,6 +516,109 @@ final class ImageFetcher
     }
 
     /**
+     * Pré-voo da credencial do imgur: UMA chamada a `/3/credits` (não conta na
+     * cota) antes de o run começar. É o que separa, em segundos e com a frase
+     * certa, os três estados que em `/3/image/<id>` parecem o mesmo 429:
+     *
+     *  - Client-ID inválido (403): o cliente é desligado (`markInvalid`) e o
+     *    resto do imgur fica adiado — sem gastar minutos de backoff numa chave
+     *    que nunca vai passar.
+     *  - cota da aplicação zerada (ClientRemaining 0): idem, com o horário em
+     *    que volta.
+     *  - credencial aceita: devolve quanto o imgur diz que resta HOJE, que é o
+     *    número que o admin quer ver no cabeçalho do run.
+     *
+     * Falha de rede aqui não decide nada: devolve `ok => false` sem `invalid`
+     * e o run segue como se não tivesse verificado. Null quando não há
+     * credencial configurada.
+     *
+     * @return null|array{ok: bool, invalid: bool, remaining: ?int, limit: ?int, reset: ?int, error: ?string}
+     */
+    public function verifyImgur(): ?array
+    {
+        $client = $this->imgur;
+        if ($client === null) {
+            return null;
+        }
+
+        $res = $this->get($client->creditsEndpoint(), $client->headers(), true);
+        $client->observe((array) ($res['headers'] ?? []));
+
+        $status = $res['ok'] ? 200 : (int) ($res['status'] ?? 0);
+        $body = (string) ($res['ok'] ? $res['bytes'] : ($res['partial'] ?? ''));
+
+        if ($status === 0) {
+            // Nem chegou a falar com o imgur (DNS, TLS, timeout): não é
+            // veredito sobre a chave.
+            return ['ok' => false, 'invalid' => false, 'remaining' => null, 'limit' => null, 'reset' => null, 'error' => (string) ($res['error'] ?? 'sem resposta')];
+        }
+
+        $parsed = $client->parseCredits($status, $body);
+
+        if ($parsed['invalid']) {
+            $client->markInvalid();
+            $this->announceImgur($client);
+        } elseif ($client->remoteExhausted()) {
+            $this->announceImgur($client);
+        }
+
+        $parsed['reset'] = $client->remoteReset();
+
+        return $parsed;
+    }
+
+    /**
+     * Erro pronto para uma URL do imgur que NÃO vai ser consultada: credencial
+     * recusada, cota da aplicação zerada (pelo imgur) ou o nosso teto do dia.
+     * Transitório em todos os casos — a imagem provavelmente existe; é a
+     * consulta que não pode ser feita agora.
+     *
+     * @return array<string, mixed>
+     */
+    private function imgurUnavailable(ImgurClient $client): array
+    {
+        $this->announceImgur($client);
+
+        $reset = $client->remoteReset();
+
+        $message = match (true) {
+            $client->invalid() => 'imgur API: Client-ID recusado pelo imgur (403 Invalid client_id) — confira a credencial',
+            $client->remoteExhausted() => 'imgur API: o imgur reporta a cota deste Client-ID como esgotada (X-RateLimit-ClientRemaining: 0'
+                . ($reset === null ? '' : ', zera em ' . (int) ceil($reset / 60) . ' min')
+                . ') — confira o Client-ID',
+            default => 'imgur API: cota diária esgotada (' . $client->usedToday() . '/' . $client->dailyCap() . ') — volta amanhã',
+        };
+
+        return $this->err($message, null, true);
+    }
+
+    /**
+     * Uma linha no console, UMA vez por run, dizendo por que tudo do imgur
+     * passou a ser adiado. Três causas, três avisos: credencial recusada, o
+     * imgur dizendo que a cota da aplicação acabou, ou o nosso teto do dia.
+     */
+    private function announceImgur(ImgurClient $client): void
+    {
+        if ($this->imgurCapAnnounced || $this->onNotice === null) {
+            return;
+        }
+        $this->imgurCapAnnounced = true;
+
+        $reset = $client->remoteReset();
+
+        ($this->onNotice)([
+            'kind'  => match (true) {
+                $client->invalid()         => 'imgur_invalid',
+                $client->remoteExhausted() => 'imgur_remote_cap',
+                default                    => 'imgur_cap',
+            },
+            'cap'   => $client->dailyCap(),
+            'used'  => $client->usedToday(),
+            'reset' => $reset === null ? '?' : (string) (int) ceil($reset / 60),
+        ]);
+    }
+
+    /**
      * Consulta a API do imgur pelo link direto. Devolve `final => true` quando
      * não há mais o que tentar (imagem não existe, ou a cota do dia acabou) —
      * nesse caso `res` já é o erro pronto para devolver.
@@ -528,29 +631,7 @@ final class ImageFetcher
         assert($client !== null);
 
         if ($client->exhausted()) {
-            // Duas causas, duas mensagens: o NOSSO teto ("volta amanhã") ou o
-            // imgur dizendo que a cota da aplicação acabou — o que também é a
-            // resposta dele a um Client-ID que não existe.
-            $remote = $client->remoteExhausted();
-            $reset = $client->remoteReset();
-
-            if (! $this->imgurCapAnnounced && $this->onNotice !== null) {
-                $this->imgurCapAnnounced = true;
-                ($this->onNotice)([
-                    'kind'  => $remote ? 'imgur_remote_cap' : 'imgur_cap',
-                    'cap'   => $client->dailyCap(),
-                    'used'  => $client->usedToday(),
-                    'reset' => $reset === null ? '?' : (string) (int) ceil($reset / 60),
-                ]);
-            }
-
-            $message = $remote
-                ? 'imgur API: o imgur reporta a cota deste Client-ID como esgotada (X-RateLimit-ClientRemaining: 0'
-                    . ($reset === null ? '' : ', zera em ' . (int) ceil($reset / 60) . ' min')
-                    . ') — confira o Client-ID'
-                : 'imgur API: cota diária esgotada (' . $client->usedToday() . '/' . $client->dailyCap() . ') — volta amanhã';
-
-            return ['ok' => false, 'link' => null, 'final' => true, 'res' => $this->err($message, null, true)];
+            return ['ok' => false, 'link' => null, 'final' => true, 'res' => $this->imgurUnavailable($client)];
         }
 
         $client->consume();
@@ -562,6 +643,13 @@ final class ImageFetcher
 
         if (! $res['ok']) {
             $status = (int) ($res['status'] ?? 0);
+
+            // O imgur acabou de dizer que a cota da aplicação zerou (ou que não
+            // conhece o Client-ID). Avisar AGORA, com a mensagem certa, em vez
+            // de devolver "HTTP 429" e deixar o aviso para a próxima imagem.
+            if ($client->remoteExhausted()) {
+                return ['ok' => false, 'link' => null, 'final' => true, 'res' => $this->imgurUnavailable($client)];
+            }
 
             if ($status === 404 || $status === 400) {
                 $parsed = $client->parseResponse($status, (string) ($res['partial'] ?? ''));
@@ -696,6 +784,14 @@ final class ImageFetcher
             }
 
             if (! ($res['transient'] ?? false) || $attempt >= $this->retries) {
+                return $res;
+            }
+
+            // 429 da API do imgur com `X-RateLimit-ClientRemaining: 0`: é a cota
+            // da APLICAÇÃO (zera em horas) ou um Client-ID desconhecido — os
+            // dois casos em que insistir com backoff é esperar à toa. Volta na
+            // primeira; quem chamou lê o cabeçalho e avisa com a frase certa.
+            if ((int) ($res['status'] ?? 0) === 429 && ImgurClient::clientQuotaGone((array) ($res['headers'] ?? []))) {
                 return $res;
             }
 

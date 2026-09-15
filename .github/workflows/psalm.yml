@@ -83,6 +83,24 @@ jobs:
           echo "::error::composer não resolveu as dependências em 5 tentativas (~3,75 min). Se o log acusa 502 do repo.packagist.org, é incidente upstream — reexecute o job."
           exit 1
 
+      # Contorno para um crash do Psalm 6.17.x: a partir do illuminate/collections
+      # 13.32.0 (2026-09-14), `Collection::prepend()` traz
+      # `@phpstan-this-out ($key is null ? static<…> : $this)`. O Psalm lê a
+      # anotação mas não registra os parâmetros do método para tipos condicionais
+      # em `this-out`, e morre com "Uncaught TypeParseTreeException: Unrecognized
+      # template '$key'" ainda na varredura dos autoloads do vendor — antes de
+      # analisar qualquer arquivo nosso. A anotação é do PHPStan e não muda nada
+      # na análise de taint; remover só as linhas com condicional resolve, e o
+      # sed é inócuo quando a versão instalada não as tem. Retirar este passo
+      # quando o Psalm passar a aceitar a sintaxe.
+      - name: Contornar crash do Psalm em @phpstan-this-out condicional
+        run: |
+          files=$(grep -rl --include=*.php '@phpstan-this-out (' vendor/illuminate || true)
+          if [ -n "$files" ]; then
+            echo "$files" | xargs sed -i '/@phpstan-this-out (/d'
+            echo "::notice::removida a anotação @phpstan-this-out condicional de: $(echo $files | tr '\n' ' ')"
+          fi
+
       # Bloqueante: o exit do psalm é propagado após garantir que o SARIF
       # exista para upload.
       - name: Psalm taint analysis
