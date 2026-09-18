@@ -349,6 +349,69 @@ class ImageFetcherTest extends TestCase
     }
 
     /**
+     * Cada imagem que precisa de espelho começa por um espelho diferente do
+     * anterior — sem isso o primeiro da lista levaria sempre o primeiro tiro
+     * e seria ele a ganhar um rate limit próprio.
+     */
+    public function test_mirrors_rotate_the_starting_proxy(): void
+    {
+        $fetcher = new ImageFetcher();
+
+        $first = $fetcher->mirrors('https://example.com/foto.jpg');
+        $second = $fetcher->mirrors('https://example.com/foto.jpg');
+        $third = $fetcher->mirrors('https://example.com/foto.jpg');
+
+        $this->assertCount(3, $first);
+        $this->assertSame(array_unique($first), $first);
+        // A mesma janela de 3, só que começando num ponto diferente.
+        $this->assertNotSame($first[0], $second[0]);
+        $this->assertNotSame($second[0], $third[0]);
+        $this->assertSame($first[0], $fetcher->mirrors('https://example.com/foto.jpg')[0], 'o rodízio dá a volta');
+    }
+
+    /**
+     * O serveproxy recodifica tudo para AVIF — inclusive o placeholder
+     * `removed.png` do imgur, sem deixar rastro no final_url. Por isso ele
+     * fica de fora do rodízio quando o alvo é o imgur.
+     */
+    public function test_serveproxy_is_excluded_from_imgur_mirrors(): void
+    {
+        $fetcher = new ImageFetcher();
+
+        $mirrors = $fetcher->mirrors('https://i.imgur.com/T1Ji3QD.jpg');
+
+        $this->assertCount(2, $mirrors);
+        foreach ($mirrors as $mirror) {
+            $this->assertStringNotContainsString('serveproxy.com', $mirror);
+        }
+
+        // Fora do imgur os três entram no rodízio.
+        $this->assertCount(3, $fetcher->mirrors('https://example.com/foto.jpg'));
+    }
+
+    public function test_mirror_urls_are_built_with_the_right_encoding(): void
+    {
+        $fetcher = new ImageFetcher();
+
+        $joined = implode(' ', $fetcher->mirrors('https://example.com/foto.jpg'));
+
+        // DuckDuckGo e serveproxy recebem a URL como parâmetro (urlencoded).
+        $this->assertStringContainsString(
+            'external-content.duckduckgo.com/iu/?u=' . rawurlencode('https://example.com/foto.jpg'),
+            $joined
+        );
+        $this->assertStringContainsString(
+            'serveproxy.com/?url=' . rawurlencode('https://example.com/foto.jpg'),
+            $joined
+        );
+        // O Wayback recebe a URL crua, colada depois do timestamp.
+        $this->assertStringContainsString(
+            'web.archive.org/web/20000000000000if_/https://example.com/foto.jpg',
+            $joined
+        );
+    }
+
+    /**
      * Insistir no IP que acabou de ser recusado é esperar à toa: a tentativa
      * seguinte tem de sair por outro endereço do rodízio.
      */

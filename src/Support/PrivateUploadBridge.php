@@ -31,6 +31,17 @@ use Illuminate\Database\ConnectionInterface;
  * por vez, então o caso "mesma imagem em duas discussões" fica para o
  * `dfs:uploads:sync` — ele reconcilia, e o pior cenário nesse meio-tempo é uma
  * imagem servida via PHP em vez de direto pelo servidor web (lenta, não exposta).
+ *
+ * ESCOLHER ONDE A PASTA FICA. O caminho `storage/<nome>` acima é uma CONSTANTE
+ * no código do dfs — não uma configuração — porque é ele quem serve esses
+ * arquivos de volta (rota com checagem de permissão). Gravar em outro lugar
+ * faria essas imagens ficarem inacessíveis para sempre, até para quem tem
+ * permissão de ver a discussão, o que é pior do que não ter a proteção. Por
+ * isso {@see useDirectory()} nunca move o caminho canônico: quando o admin
+ * escolhe uma pasta (outro disco, por exemplo), o canônico passa a ser um
+ * LINK para ela — o dfs (e qualquer outra extensão que sirva uploads
+ * privados pelo mesmo caminho) continua achando os arquivos onde sempre
+ * olhou, e os bytes moram onde o admin escolheu.
  */
 final class PrivateUploadBridge
 {
@@ -41,6 +52,12 @@ final class PrivateUploadBridge
 
     /** @var array<int, bool> discussion id => visível ao visitante */
     private array $guestVisible = [];
+
+    /** Pasta real escolhida pelo admin (ver useDirectory()), ou null = padrão. */
+    private ?string $realDirectory = null;
+
+    /** O que deu errado ao tentar ligar o caminho canônico à pasta escolhida. */
+    private ?string $linkNotice = null;
 
     public function __construct(
         private ConnectionInterface $db,
@@ -104,6 +121,134 @@ final class PrivateUploadBridge
     public function directoryHint(): string
     {
         return rtrim($this->paths->storage, '/\\') . DIRECTORY_SEPARATOR . $this->directory();
+    }
+
+    /**
+     * Escolhe onde a pasta privada FICA de verdade, sem mudar por onde ela é
+     * ACHADA: o caminho canônico ({@see directoryHint()}) vira um link para
+     * `$path`. `null`/vazio volta ao padrão (canônico como pasta de verdade).
+     *
+     * Nunca destrutivo: uma pasta canônica já existente com arquivos (não um
+     * link) é deixada como está — mover dados de produção sozinho é risco
+     * demais para um comando de migração decidir. {@see directoryNotice()}
+     * explica o que fazer à mão nesse caso, ou quando o link não pôde ser
+     * criado (Windows sem Modo desenvolvedor/administrador, por exemplo).
+     */
+    public function useDirectory(?string $path): self
+    {
+        $path = $path === null ? '' : rtrim(trim($path), '/\\');
+        $this->linkNotice = null;
+
+        // Mesmo caminho do padrão: não é uma escolha, é o padrão escrito por
+        // extenso. Trata como ausência de override — sem isso o passo abaixo
+        // veria a pasta canônica "já existindo com arquivos" e reclamaria de
+        // um link que nem precisa existir.
+        if ($path !== '' && rtrim(str_replace('\\', '/', $path), '/') === rtrim(str_replace('\\', '/', $this->directoryHint()), '/')) {
+            $path = '';
+        }
+
+        $this->realDirectory = $path === '' ? null : $path;
+
+        if ($this->realDirectory !== null) {
+            $this->linkNotice = $this->ensureLink($this->realDirectory);
+        }
+
+        return $this;
+    }
+
+    /** A pasta real escolhida pelo admin, quando diferente do padrão — só para exibir no log. */
+    public function realDirectoryHint(): ?string
+    {
+        return $this->realDirectory;
+    }
+
+    /**
+     * O que deu errado ao aplicar {@see useDirectory()} — null quando não há
+     * override ou quando o link já está apontando para o lugar certo.
+     */
+    public function directoryNotice(): ?string
+    {
+        return $this->linkNotice;
+    }
+
+    /**
+     * Garante que o caminho canônico seja um link para `$real`, criando a
+     * pasta real quando falta. Devolve uma mensagem de aviso (para o console)
+     * quando não dá para garantir isso, ou null quando está tudo certo.
+     */
+    private function ensureLink(string $real): ?string
+    {
+        $canonical = $this->directoryHint();
+
+        if (! is_dir($real) && ! @mkdir($real, 0775, true) && ! is_dir($real)) {
+            return "não foi possível criar a pasta {$real}";
+        }
+
+        // O mklink do fallback do Windows (abaixo) roda num processo EXTERNO:
+        // sem isto, o cache de stat do PHP ainda responde com o que via antes
+        // dele — inclusive is_dir()/realpath() do MESMO caminho checados mais
+        // cedo nesta chamada (ex.: available()/directoryHint() de fora).
+        clearstatcache(true, $canonical);
+        clearstatcache(true, $real);
+
+        $realResolved = realpath($real) ?: $real;
+
+        if (is_dir($canonical)) {
+            // realpath() ATRAVESSA link e junção — bate com o destino
+            // escolhido quando (e só quando) o canônico já aponta para lá.
+            // É mais confiável que is_link()/readlink(): no Windows, is_link()
+            // só reconhece o reparse tag de SYMLINK (uma junção tem outro tag
+            // e ele devolve false mesmo apontando certo), e o readlink() desta
+            // build devolve o PRÓPRIO caminho, em vez de false, para uma pasta
+            // comum — os dois dariam falso negativo/positivo aqui.
+            if ($this->samePath((string) realpath($canonical), $realResolved)) {
+                return null; // já aponta para o lugar certo
+            }
+
+            $entries = array_diff((array) @scandir($canonical), ['.', '..']);
+            if ($entries !== []) {
+                return "{$canonical} já existe (com arquivos, ou como link para outro lugar) — mova/ajuste manualmente para religar em {$real}, ou deixe a pasta escolhida em branco para continuar usando o caminho padrão";
+            }
+
+            // Vazia (pasta comum OU link/junção vazios): sai do caminho para o
+            // link entrar. rmdir() remove os dois casos sem seguir o alvo.
+            if (! @rmdir($canonical)) {
+                return "não foi possível remover {$canonical} para criar o link";
+            }
+            clearstatcache(true, $canonical);
+        }
+
+        if (@symlink($realResolved, $canonical)) {
+            return null;
+        }
+
+        // No Windows, symlink() de diretório exige Modo desenvolvedor ligado
+        // ou elevação — uma junção NTFS (mklink /J) faz o mesmo sem precisar
+        // de nenhum dos dois, mas só entre caminhos locais (sem UNC/rede).
+        if (PHP_OS_FAMILY === 'Windows' && $this->createWindowsJunction($canonical, $realResolved)) {
+            clearstatcache(true, $canonical);
+
+            return null;
+        }
+
+        $hint = PHP_OS_FAMILY === 'Windows'
+            ? ' (no Windows, ligue o Modo desenvolvedor ou rode como administrador)'
+            : '';
+
+        return "não foi possível criar o link {$canonical} -> {$realResolved}{$hint}";
+    }
+
+    private function createWindowsJunction(string $canonical, string $real): bool
+    {
+        $cmd = 'cmd /c mklink /J ' . escapeshellarg($canonical) . ' ' . escapeshellarg($real);
+        @exec($cmd, $output, $code);
+
+        return $code === 0;
+    }
+
+    private function samePath(string $a, string $b): bool
+    {
+        return rtrim(str_replace('\\', '/', $a), '/') === rtrim(str_replace('\\', '/', $b), '/');
     }
 
     /**

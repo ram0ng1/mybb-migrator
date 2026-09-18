@@ -113,6 +113,12 @@ export interface MediaConfig {
   map_table: boolean;
   /** Pasta absoluta onde os arquivos são gravados. */
   directory: string;
+  /** O mecanismo de uploads privados (ramon/dfs) existe nesta instalação? */
+  private_available: boolean;
+  /** Pasta canônica que o dfs (se instalado) espera — o padrão sem override. */
+  private_default_dir: string;
+  /** Pasta escolhida pelo admin para os uploads privados; vazio = padrão. */
+  private_uploads_dir: string;
 }
 
 /** Agregados do mapa de mídia (só vêm com ?counts=1). */
@@ -199,6 +205,7 @@ export interface ConnectionPayload {
   imgur_client_id?: string;
   imgur_daily_cap?: string | number;
   attachments_dir?: string;
+  private_uploads_dir?: string;
 }
 
 export interface CompareResult {

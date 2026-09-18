@@ -74,6 +74,13 @@ class SaveConnectionController implements RequestHandlerInterface
         if (array_key_exists('attachments_dir', $body)) {
             $this->settings->set('mybb-migrator.attachments_dir', trim((string) $body['attachments_dir']));
         }
+        // Onde os uploads de discussão privada moram de verdade (ver
+        // PrivateUploadBridge::useDirectory). Vazio = padrão (dentro de
+        // storage/). O caminho canônico que o ramon/dfs espera não muda —
+        // vira um link para esta pasta.
+        if (array_key_exists('private_uploads_dir', $body)) {
+            $this->settings->set('mybb-migrator.private_uploads_dir', trim((string) $body['private_uploads_dir']));
+        }
         // Client-ID da API do imgur (ver ImgurClient). Campo em branco APAGA a
         // credencial de propósito: é o jeito de voltar ao modo sem API.
         if (array_key_exists('imgur_client_id', $body)) {

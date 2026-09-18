@@ -170,6 +170,16 @@ ramon-mybb-migrator:
         Caminho da pasta “uploads” do MyBB. Preenchida, os anexos são copiados
         direto do disco; vazia, são baixados pela URL do site antigo — o que só
         funciona enquanto os anexos forem públicos lá.
+      private_uploads_dir: Pasta de uploads privados (opcional)
+      private_uploads_dir_hint: >-
+        Onde os arquivos de discussões que o visitante não pode ver moram de
+        verdade — vazio usa o padrão (dentro da pasta storage deste fórum).
+        Escolha outra pasta quando esse disco for pequeno, ou preferir manter
+        esses arquivos num volume/rotina de backup separado. O caminho
+        storage/dfs-private-uploads (de onde o ramon/dfs, se instalado, lê) continua
+        apontando para cá por um link simbólico/junção, então ele continua
+        achando os arquivos; uma pasta já existente com conteúdo é deixada
+        como está, nunca movida sozinha.
       directory: Os arquivos são gravados em
       detect: Detectar automaticamente
       detect_failed: A detecção automática falhou.
@@ -330,6 +340,7 @@ ramon-mybb-migrator:
       sample_suffix: (amostra)
       hosts_more: "    … e mais {count} host(s), todos incluídos. A lista completa está na aba \"Imagens\"."
       restricted: "  restrito: {path}  (imagens de discussão invisível ao visitante nascem AQUI, nunca no público)"
+      restricted_dir_warning: "⚠ não deu para usar a pasta privada escolhida como está: {error}"
       line_hosts: "Hosts   : {hosts}"
       hosts_all: (todos os externos)
       limit_downloads: "{count} downloads"
@@ -372,6 +383,7 @@ ramon-mybb-migrator:
       source_local: "pasta local {path}"
       source_download: "download em {url}"
       restricted: "  restrito: {path}  (anexos de discussão invisível ao visitante nascem AQUI)"
+      restricted_dir_warning: "⚠ não deu para usar a pasta privada escolhida como está: {error}"
       limit_files: "{count} anexos"
       limit_files_none: sem limite
       optimize_images_only: (só vale para anexos de imagem)

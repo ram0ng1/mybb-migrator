@@ -97,7 +97,7 @@ class OptimizeMediaCommand extends AbstractCommand
         // --quality / --max-dim / --no-webp / --no-optimize vêm do trait, com os
         // mesmos padrões da aba "Imagens" — o resultado aqui e na importação é
         // exatamente o mesmo arquivo.
-        $this->addMediaFetchOptions(network: false);
+        $this->addMediaFetchOptions(network: false, private: false);
         $this->addLocaleOption();
     }
 

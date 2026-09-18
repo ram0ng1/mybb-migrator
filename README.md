@@ -331,9 +331,10 @@ php flarum mybb:optimize-media --force --limit=50
 | `--no-webp` | Optimize without converting to WebP — keeps the source format. |
 | `--no-optimize` | Store the bytes exactly as downloaded: no re-encoding, no resizing. |
 | `--imgur-client-id=ID` | imgur API Client-ID (overrides the panel). Each imgur image is resolved with one authenticated API call instead of guessing extensions at `i.imgur.com`. |
-| `--imgur-daily-cap=N` | Maximum imgur API calls per UTC day, persisted across runs (default 10000; `0` = no cap). Once reached, remaining imgur URLs are deferred to the next day. |
+| `--imgur-daily-cap=N` | Maximum imgur API calls per UTC day, persisted across runs (default no local cap; `0` = no cap). Once reached, remaining imgur URLs are deferred to the next day. |
 | `--no-defer` | Retry DNS/connection failures inline instead of pushing those URLs to the end of the run. |
 | `--insecure` | Skip TLS certificate verification. Off by default: a host with a broken chain fails with a clear `curl 60` error instead of being silently accepted, because with verification off anyone on the network path could replace the images being imported. |
+| `--private-dir=PATH` | Where private-discussion uploads actually live (overrides the panel setting; only relevant with `ramon/dfs` installed — see "Restricted tags" below). `storage/dfs-private-uploads` keeps pointing here via a symlink/junction. |
 | `--locale=xx` | Language of this run's output (e.g. `pt-BR`). Defaults to the panel setting, then to the forum's `default_locale`. |
 
 Scan order: **newest discussions first** (by discussion id, newest posts first
@@ -377,6 +378,22 @@ Hosts that do not answer (dead DNS, refused connections) do not stall the scan:
   URL last. Other legacy postimg/postimage hosts (`sNN.postimg.cc`, `.io`,
   `postimage.org`) follow the same rule; page URLs (`/image/<id>/`) cannot be
   translated because they do not carry the file name.
+- When a real server answered but the answer was no good — a `404`, imgur's
+  `removed.png`, HTML instead of an image, or a `429` that ended the direct
+  attempts — the same URL is retried through up to three **third-party
+  mirrors**: DuckDuckGo's image proxy (`external-content.duckduckgo.com`), the
+  **Wayback Machine** (`web.archive.org`, the only one able to serve an image
+  the original host has since deleted) and `serveproxy.com`. Each is a
+  different host from the original, so a `429` against imgur — or a rate
+  limit against one of the mirrors themselves — does not block the others.
+  The **order rotates per image**, so the same mirror is not hit first every
+  time. `serveproxy.com` is skipped for imgur specifically: it re-encodes
+  everything to AVIF, including the `removed.png` placeholder, in a way that
+  leaves no trace in the response URL — that placeholder is caught by a
+  byte-hash check regardless of which mirror served it. A pure connection
+  failure (dead DNS, refused connection) does **not** reach the mirrors: that
+  is what the deferred/host-trip handling above already covers, and retrying
+  through a mirror would reuse the same broken network path.
 
 imgur with an API Client-ID (Images tab, or `--imgur-client-id`):
 
@@ -518,6 +535,20 @@ side to begin with:
 
 Without `ramon/dfs` installed all of this switches off and files are written
 publicly, which is the only possible destination in that case.
+
+**Choosing where that private store actually lives** (`--private-dir=PATH`, or
+the "Private uploads folder" field on the Images tab, only shown when
+`ramon/dfs` is detected): `storage/dfs-private-uploads` is a hardcoded constant
+in `ramon/dfs`'s own code, not a setting — it has to be exactly there for the
+gated route to find the files. So instead of writing somewhere else, this
+extension turns that path into a symlink (a junction on Windows, when a plain
+symlink needs elevation or Developer Mode) pointing at the folder you chose —
+handy when the forum's storage disk is small, or you'd rather keep these files
+on a separate volume or backup schedule. `ramon/dfs` keeps reading from
+`storage/dfs-private-uploads` exactly as before and never notices the
+difference. Nothing here is destructive: a folder that already exists at the
+canonical path **with files in it** is left untouched and the run just says why
+linking was skipped, rather than moving production data around on its own.
 
 The URL frozen into the post is `/assets/files/…` either way — that is precisely
 what `GatePrivateUploads` looks for when it rewrites a render to the gated route.

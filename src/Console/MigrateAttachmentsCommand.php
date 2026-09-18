@@ -154,7 +154,15 @@ class MigrateAttachmentsCommand extends AbstractCommand
                 : $this->trans('attachments.source_download', ['url' => $oldSite . '/attachment.php']),
         ]));
         if ($this->private->available()) {
-            $this->info($this->trans('attachments.restricted', ['path' => $this->private->directoryHint()]));
+            $this->private->useDirectory($this->privateUploadsDir($this->settings));
+
+            $this->info($this->trans('attachments.restricted', [
+                'path' => $this->private->realDirectoryHint() ?? $this->private->directoryHint(),
+            ]));
+
+            if (($notice = $this->private->directoryNotice()) !== null) {
+                $this->info($this->trans('attachments.restricted_dir_warning', ['error' => $notice]));
+            }
         }
         $this->info($this->trans('common.line_limits', [
             'limits' => $this->trans($limit > 0 ? 'attachments.limit_files' : 'attachments.limit_files_none', ['count' => $limit])

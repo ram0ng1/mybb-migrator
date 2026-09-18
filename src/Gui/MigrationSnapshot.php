@@ -9,6 +9,7 @@ use Illuminate\Database\ConnectionInterface;
 use Ramon\MybbMigrator\MybbDatabase;
 use Ramon\MybbMigrator\Support\ImageStore;
 use Ramon\MybbMigrator\Support\ImgurClient;
+use Ramon\MybbMigrator\Support\PrivateUploadBridge;
 
 /**
  * Contagens de origem (MyBB) e destino (Flarum) + pré-checagem de extensões,
@@ -41,6 +42,7 @@ class MigrationSnapshot
         protected SettingsRepositoryInterface $settings,
         protected ExtensionManager $extensions,
         protected Paths $paths,
+        protected PrivateUploadBridge $private,
     ) {
     }
 
@@ -78,6 +80,12 @@ class MigrationSnapshot
             'map_table'         => $this->hasTable('mybb_migrated_images'),
             'directory'         => rtrim($this->paths->public, '/\\')
                 . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . ImageStore::DIR,
+            // Uploads de discussão privada (ver PrivateUploadBridge): só faz
+            // sentido escolher a pasta quando o mecanismo existe de verdade
+            // (tabela do dfs presente) — sem ela tudo é público sempre.
+            'private_available'   => $this->private->available(),
+            'private_default_dir' => $this->private->directoryHint(),
+            'private_uploads_dir' => (string) ($this->settings->get('mybb-migrator.private_uploads_dir') ?? ''),
         ];
     }
 

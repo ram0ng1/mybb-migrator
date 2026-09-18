@@ -65,6 +65,23 @@ namespace Ramon\MybbMigrator\Support;
  *     extensões em i.imgur.com; um 404 da API é falha DEFINITIVA e a cota
  *     esgotada é falha TRANSITÓRIA (deferred, volta no dia seguinte). A API não
  *     atende IPv6, então essas chamadas forçam IPv4 e evitam exits IPv6.
+ *  6. ESPELHOS DE TERCEIROS. Quando um servidor de verdade RESPONDEU e a
+ *     resposta não serviu (404/HTML/placeholder do imgur, ou um 429 que
+ *     encerrou os candidatos diretos), a MESMA imagem é tentada por até três
+ *     espelhos — DuckDuckGo (`external-content.duckduckgo.com`), o Wayback
+ *     Machine (`web.archive.org`, o único capaz de servir uma imagem que o
+ *     host original já apagou) e `serveproxy.com`. Cada um é um HOST
+ *     diferente do original, então um 429 nosso contra o imgur não os
+ *     atinge — e a ORDEM roda a cada imagem (ver mirrors()) para não
+ *     concentrar tráfego sempre no mesmo espelho primeiro e dar A ELE um
+ *     rate limit próprio. Uma falha de CONEXÃO pura (nenhum servidor
+ *     respondeu) NÃO libera os espelhos — é o item 3 que cuida dela, e
+ *     insistir ali reusaria o mesmo caminho de rede que acabou de falhar. O
+ *     serveproxy fica de fora da rotação do imgur: ele recodifica tudo para
+ *     AVIF, inclusive o placeholder `removed.png` (confirmado: 503 bytes de
+ *     PNG viram 761 bytes de AVIF), sem nenhum indício no `final_url` de que
+ *     é ele — por isso esse placeholder também é reconhecido pelo HASH dos
+ *     bytes, não só pela URL final.
  */
 final class ImageFetcher
 {
@@ -129,6 +146,30 @@ final class ImageFetcher
     /** Teto da penalidade por host: acima disso o run inteiro pararia de andar. */
     private const PENALTY_CAP = 30.0;
 
+    /** Repassa os bytes exatamente como vieram — confirmado com o mesmo hash do fetch direto. */
+    private const MIRROR_DUCKDUCKGO = ['tpl' => 'https://external-content.duckduckgo.com/iu/?u=%s', 'raw' => false];
+
+    /**
+     * O timestamp `20000000000000` não precisa bater com uma captura real: o
+     * Wayback redireciona para a mais próxima que existir. `if_` pede o
+     * conteúdo sem a barra de ferramentas dele.
+     */
+    private const MIRROR_WAYBACK = ['tpl' => 'https://web.archive.org/web/20000000000000if_/%s', 'raw' => true];
+
+    /**
+     * Recodifica TUDO para AVIF, inclusive o placeholder `removed.png` do
+     * imgur — ver mirrors(). Só entra no rodízio fora do imgur.
+     */
+    private const MIRROR_SERVEPROXY = ['tpl' => 'https://serveproxy.com/?url=%s', 'raw' => false];
+
+    /**
+     * SHA-256 do placeholder `removed.png` do imgur: 503 bytes, sempre os
+     * MESMOS (confirmado buscando a URL duas vezes). Pega o caso que o
+     * `final_url` não pega: um espelho que devolve HTTP 200 com esses bytes
+     * sem nunca expor o redirect original do imgur.
+     */
+    private const IMGUR_REMOVED_SHA256 = '9b5936f4006146e4e1e9025b474c02863c0b5614132ad40db4b925a10e8bfbb9';
+
     /** Intervalo mínimo entre requisições ao mesmo host, em segundos. */
     private float $hostDelay;
 
@@ -150,6 +191,9 @@ final class ImageFetcher
 
     /** Ponteiro do rodízio, para desempatar exits igualmente livres. */
     private int $cursor = 0;
+
+    /** Ponteiro do rodízio dos espelhos externos — ver mirrors(). */
+    private int $mirrorCursor = 0;
 
     /**
      * Avisado a cada retentativa, para que ela apareça no console em vez de o
@@ -335,6 +379,14 @@ final class ImageFetcher
         $last = null;
         $candidates = $this->candidates($url);
 
+        // Só vale gastar os espelhos quando ALGUÉM respondeu de verdade — um
+        // status HTTP (mesmo que 404/429), ou bytes que vieram e foram
+        // recusados a seguir. Falha de CONEXÃO pura (DNS, connect, exit/proxy
+        // que não sobe) já tem o mecanismo dela — defer/host-trip — e tentar
+        // os espelhos ali reusaria o MESMO caminho de rede que acabou de
+        // falhar, sem nenhuma chance real.
+        $sawServer = false;
+
         // imgur com credencial: UMA chamada à API resolve o link direto certo,
         // em vez de até cinco GETs chutando extensão. Só vale para o que é
         // imagem única (id reconhecível); álbuns/galerias seguem como sempre.
@@ -344,10 +396,23 @@ final class ImageFetcher
             if ($api['ok']) {
                 $candidates = [(string) $api['link']];
             } elseif ($api['final']) {
-                // 404 da API ou cota esgotada: nada a ganhar chutando i.imgur.com
-                // — no primeiro caso a imagem não existe, no segundo é
-                // exatamente o tráfego que o teto existe para evitar.
-                return $this->clean($api['res']);
+                if ((bool) ($api['res']['transient'] ?? false)) {
+                    // Cota esgotada ou credencial recusada: nada a ganhar
+                    // tentando por qualquer caminho agora — é exatamente o
+                    // tráfego que o teto existe para evitar. Adiada, volta no
+                    // próximo run.
+                    return $this->clean($api['res']);
+                }
+
+                // A API confirmou que a imagem foi apagada (404/400): os
+                // palpites de extensão em i.imgur.com não têm mais o que
+                // dizer (mesmo host, mesmo veredito) — só os espelhos, logo
+                // abaixo, ainda podem ter uma cópia de antes da exclusão (o
+                // Wayback, em especial). A própria API já é a "resposta de um
+                // servidor" que libera a tentativa neles.
+                $candidates = [];
+                $last = $api['res'];
+                $sawServer = true;
             }
             // Erro inesperado da API (5xx, JSON quebrado): cai no caminho antigo.
         }
@@ -356,48 +421,101 @@ final class ImageFetcher
             $res = $this->get($candidate);
 
             if (! $res['ok']) {
-                // Rate limit / timeout / 5xx: as variantes de extensão do imgur
-                // apontam para o MESMO objeto no MESMO host — insistir nelas só
-                // multiplicaria o tráfego que já está sendo recusado.
-                if ($res['transient'] ?? false) {
-                    return $this->clean($res);
+                $last = $res;
+
+                if ((int) ($res['status'] ?? 0) > 0) {
+                    $sawServer = true;
                 }
 
-                $last = $res;
+                // Rate limit / timeout / 5xx: as variantes de extensão do imgur
+                // apontam para o MESMO objeto no MESMO host — insistir nelas só
+                // multiplicaria o tráfego que já está sendo recusado. Os
+                // espelhos logo abaixo saem por OUTRA rede e ainda merecem a
+                // chance.
+                if ($res['transient'] ?? false) {
+                    break;
+                }
+
                 continue;
             }
 
-            $mime = $this->sniff((string) $res['bytes']);
-            $ext = self::extensionFor($mime);
+            $sawServer = true;
 
-            if ($ext === null) {
-                // Não é imagem: quase sempre a página HTML de "imagem removida".
-                $last = $this->err(
-                    $this->looksLikeHtml((string) $res['bytes'])
-                        ? 'destino devolveu HTML (imagem removida/expirada)'
-                        : 'tipo não suportado: ' . ($mime ?? 'desconhecido'),
-                    $res['final_url']
-                );
-                continue;
+            $found = $this->acceptImage($res, $candidate, $last);
+            if ($found !== null) {
+                return $found;
             }
+        }
 
-            if ($this->isImgurPlaceholder((string) ($res['final_url'] ?? $candidate))) {
-                $last = $this->err('imgur: imagem removida (removed.png)', $res['final_url']);
-                continue;
+        if ($sawServer) {
+            foreach ($this->mirrors($url) as $candidate) {
+                $res = $this->get($candidate);
+
+                if (! $res['ok']) {
+                    // Um espelho recusando (rate limit próprio, 404) não diz
+                    // nada sobre os outros dois — cada um é uma rede e, no
+                    // caso do Wayback, uma ÉPOCA diferente.
+                    $last = $res;
+                    continue;
+                }
+
+                $found = $this->acceptImage($res, $candidate, $last);
+                if ($found !== null) {
+                    return $found;
+                }
             }
-
-            return [
-                'ok'        => true,
-                'bytes'     => $res['bytes'],
-                'mime'      => $mime,
-                'ext'       => $ext,
-                'final_url' => $res['final_url'],
-                'error'     => null,
-                'transient' => false,
-            ];
         }
 
         return $this->clean($last ?? $this->err('nenhum candidato de URL'));
+    }
+
+    /**
+     * Um candidato respondeu 2xx com bytes: é imagem de verdade, ou HTML / o
+     * placeholder do imgur disfarçado de sucesso? Devolve o resultado pronto
+     * em caso de aceite, ou null — e nesse caso atualiza `$last` com o
+     * motivo, para quem chamou (a mesma lógica serve para candidatos diretos
+     * e para espelhos).
+     *
+     * @param array<string, mixed> $res resultado OK de get()
+     * @return null|array{ok: bool, bytes: ?string, mime: ?string, ext: ?string, final_url: ?string, error: ?string, transient: bool}
+     */
+    private function acceptImage(array $res, string $candidate, ?array &$last): ?array
+    {
+        $mime = $this->sniff((string) $res['bytes']);
+        $ext = self::extensionFor($mime);
+
+        if ($ext === null) {
+            // Não é imagem: quase sempre a página HTML de "imagem removida".
+            $last = $this->err(
+                $this->looksLikeHtml((string) $res['bytes'])
+                    ? 'destino devolveu HTML (imagem removida/expirada)'
+                    : 'tipo não suportado: ' . ($mime ?? 'desconhecido'),
+                $res['final_url']
+            );
+
+            return null;
+        }
+
+        // O final_url pega o caso normal (o request seguiu o redirect do
+        // imgur direto); o hash pega o que um espelho de terceiro esconde —
+        // ele devolve os MESMOS bytes do placeholder com HTTP 200, sem nunca
+        // expor o redirect original.
+        if ($this->isImgurPlaceholder((string) ($res['final_url'] ?? $candidate))
+            || $this->looksLikeImgurRemoved((string) $res['bytes'])) {
+            $last = $this->err('imgur: imagem removida (removed.png)', $res['final_url']);
+
+            return null;
+        }
+
+        return [
+            'ok'        => true,
+            'bytes'     => $res['bytes'],
+            'mime'      => $mime,
+            'ext'       => $ext,
+            'final_url' => $res['final_url'],
+            'error'     => null,
+            'transient' => false,
+        ];
     }
 
     /**
@@ -513,6 +631,57 @@ final class ImageFetcher
         }
 
         return $id;
+    }
+
+    /** Host do imgur, mesmo quando não é imagem única (álbum, galeria) — usado só para decidir se o serveproxy entra no rodízio. */
+    private function isImgurHost(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        return $host === 'imgur.com' || str_ends_with($host, '.imgur.com');
+    }
+
+    /**
+     * Espelhos de terceiros para uma URL, na ordem do rodízio: cada imagem
+     * que cai aqui começa por um espelho diferente do anterior — sem isso o
+     * primeiro da lista levaria SEMPRE o primeiro tiro, e seria ele a ganhar
+     * um rate limit próprio cedo ou tarde (é exatamente o problema que
+     * queremos evitar, só que transferido para o espelho).
+     *
+     * O serveproxy fica de fora para o imgur: ele recodifica tudo para AVIF —
+     * inclusive o placeholder `removed.png` (confirmado: 503 bytes de PNG
+     * viram 761 bytes de AVIF), sem nenhum indício no `final_url` de que é
+     * ele. Fora do imgur não há esse placeholder conhecido, então ele entra.
+     *
+     * Público pelo mesmo motivo de {@see candidates()}: é puro (não toca
+     * rede, só avança o ponteiro do rodízio) e vale testar direto.
+     *
+     * @return array<int, string>
+     */
+    public function mirrors(string $url): array
+    {
+        $pool = $this->isImgurHost($url)
+            ? [self::MIRROR_DUCKDUCKGO, self::MIRROR_WAYBACK]
+            : [self::MIRROR_DUCKDUCKGO, self::MIRROR_WAYBACK, self::MIRROR_SERVEPROXY];
+
+        $total = count($pool);
+        $offset = $this->mirrorCursor % $total;
+        $this->mirrorCursor++;
+
+        $out = [];
+        for ($i = 0; $i < $total; $i++) {
+            $out[] = $this->buildMirror($pool[($offset + $i) % $total], $url);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array{tpl: string, raw: bool} $mirror
+     */
+    private function buildMirror(array $mirror, string $url): string
+    {
+        return sprintf($mirror['tpl'], $mirror['raw'] ? $url : rawurlencode($url));
     }
 
     /**
@@ -639,7 +808,6 @@ final class ImageFetcher
         // IPv4 forçado: a API do imgur não atende IPv6 — nem por interface
         // IPv6 do servidor, nem por resolução AAAA.
         $res = $this->get($client->endpoint($id), $client->headers(), true);
-        $client->observe((array) ($res['headers'] ?? []));
 
         if (! $res['ok']) {
             $status = (int) ($res['status'] ?? 0);
@@ -647,7 +815,12 @@ final class ImageFetcher
             // O imgur acabou de dizer que a cota da aplicação zerou (ou que não
             // conhece o Client-ID). Avisar AGORA, com a mensagem certa, em vez
             // de devolver "HTTP 429" e deixar o aviso para a próxima imagem.
-            if ($client->remoteExhausted()) {
+            //
+            // Não usamos o header desta chamada para bloquear o lote: o
+            // pré-voo em /3/credits é a fonte confiável da quota da aplicação.
+            // O endpoint de imagem pode responder 429 por limite transitório
+            // do pedido/IP; nesse caso o fetcher deve cair na URL direta.
+            if ($client->remoteExhausted() && $status !== 429) {
                 return ['ok' => false, 'link' => null, 'final' => true, 'res' => $this->imgurUnavailable($client)];
             }
 
@@ -657,10 +830,10 @@ final class ImageFetcher
                 return ['ok' => false, 'link' => null, 'final' => true, 'res' => $this->err((string) $parsed['error'], null, false)];
             }
 
-            // 429/5xx da API: transitório, e não adianta ir chutar i.imgur.com
-            // (é o mesmo host recusando). Devolve o erro como veio.
+            // 429/5xx da API: transitório. Tenta a URL direta como fallback;
+            // o download de i.imgur.com não depende da cota da API.
             if ($res['transient'] ?? false) {
-                return ['ok' => false, 'link' => null, 'final' => true, 'res' => $res];
+                return ['ok' => false, 'link' => null, 'final' => false, 'res' => $res];
             }
 
             return ['ok' => false, 'link' => null, 'final' => false, 'res' => $res];
@@ -931,8 +1104,11 @@ final class ImageFetcher
             CURLOPT_USERAGENT      => self::UA,
             CURLOPT_ENCODING       => '',
             CURLOPT_HTTPHEADER     => array_merge(
-                $headers === [] ? ['Accept: image/avif,image/webp,image/*,*/*;q=0.8'] : [],
-                $headers
+                [
+                    'Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Cache-Control: no-cache',
+                ],
+                $headers === [] ? ['Accept: image/avif,image/webp,image/*,*/*;q=0.8'] : $headers
             ),
             // Verificação TLS ligada por padrão (ver o construtor). Validar o
             // conteúdo por magic bytes garante que é imagem — não que é A
@@ -1040,7 +1216,13 @@ final class ImageFetcher
      */
     private function getStream(string $url, ?array $exit = null, array $headers = []): array
     {
-        $extra = $headers === [] ? ['Accept: image/avif,image/webp,image/*,*/*;q=0.8'] : $headers;
+        $extra = array_merge(
+            [
+                'Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Cache-Control: no-cache',
+            ],
+            $headers === [] ? ['Accept: image/avif,image/webp,image/*,*/*;q=0.8'] : $headers
+        );
 
         $http = [
             'method'          => 'GET',
@@ -1281,6 +1463,16 @@ final class ImageFetcher
     private function isImgurPlaceholder(string $url): bool
     {
         return (bool) preg_match('#imgur\.com/removed\.(png|jpe?g|gif)#i', $url);
+    }
+
+    /**
+     * Mesmo placeholder, reconhecido pelos BYTES: 503 de tamanho é barato de
+     * checar antes do hash, e o tamanho exato já descarta quase tudo que não é
+     * o placeholder.
+     */
+    private function looksLikeImgurRemoved(string $bytes): bool
+    {
+        return strlen($bytes) === 503 && hash('sha256', $bytes) === self::IMGUR_REMOVED_SHA256;
     }
 
     private function mb(int $bytes): string
