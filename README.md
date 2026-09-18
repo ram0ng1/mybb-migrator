@@ -541,14 +541,17 @@ the "Private uploads folder" field on the Images tab, only shown when
 `ramon/dfs` is detected): `storage/dfs-private-uploads` is a hardcoded constant
 in `ramon/dfs`'s own code, not a setting — it has to be exactly there for the
 gated route to find the files. So instead of writing somewhere else, this
-extension turns that path into a symlink (a junction on Windows, when a plain
-symlink needs elevation or Developer Mode) pointing at the folder you chose —
+extension turns that path into a symlink pointing at the folder you chose —
 handy when the forum's storage disk is small, or you'd rather keep these files
 on a separate volume or backup schedule. `ramon/dfs` keeps reading from
 `storage/dfs-private-uploads` exactly as before and never notices the
-difference. Nothing here is destructive: a folder that already exists at the
-canonical path **with files in it** is left untouched and the run just says why
-linking was skipped, rather than moving production data around on its own.
+difference. On Windows, creating a *directory* symlink needs Developer Mode or
+an elevated process; when that's not available, nothing is shelled out to work
+around it — the run tells you the exact `mklink /J` command to run by hand in
+an elevated prompt instead. Nothing here is destructive: a folder that already
+exists at the canonical path **with files in it** is left untouched and the
+run just says why linking was skipped, rather than moving production data
+around on its own.
 
 The URL frozen into the post is `/assets/files/…` either way — that is precisely
 what `GatePrivateUploads` looks for when it rewrites a render to the gated route.

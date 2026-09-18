@@ -199,24 +199,18 @@ class PrivateUploadBridgeTest extends TestCase
      */
     public function test_useDirectory_links_the_canonical_path_to_the_chosen_folder(): void
     {
-        if (! function_exists('symlink') && \PHP_OS_FAMILY !== 'Windows') {
-            $this->markTestSkipped('symlink() indisponível');
-        }
-
         [$bridge, $root] = $this->bridge();
         $real = $root . '/elsewhere/private-uploads';
 
-        $notice = null;
         $bridge->useDirectory($real);
         $notice = $bridge->directoryNotice();
 
         if ($notice !== null) {
-            // Ambiente sem permissão para link nem junção (CI sem Modo
-            // desenvolvedor/administrador no Windows): o aviso tem que
-            // explicar isso, não falhar em silêncio.
+            // Ambiente sem permissão para criar link de diretório (comum sem
+            // Modo desenvolvedor/elevação no Windows): confere que o aviso
+            // pelo menos explica isso, e não finge cobertura que não rodou.
             $this->assertStringContainsString($bridge->directoryHint(), $notice);
-
-            return;
+            $this->markTestSkipped('sem permissão para link de diretório neste ambiente: ' . $notice);
         }
 
         $this->assertNull($notice);

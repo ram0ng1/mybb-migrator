@@ -184,10 +184,9 @@ final class PrivateUploadBridge
             return "não foi possível criar a pasta {$real}";
         }
 
-        // O mklink do fallback do Windows (abaixo) roda num processo EXTERNO:
-        // sem isto, o cache de stat do PHP ainda responde com o que via antes
-        // dele — inclusive is_dir()/realpath() do MESMO caminho checados mais
-        // cedo nesta chamada (ex.: available()/directoryHint() de fora).
+        // is_dir()/realpath() do MESMO caminho podem ter sido checados mais
+        // cedo nesta chamada (ex.: available()/directoryHint() de fora) e o
+        // cache de stat do PHP ainda responder com o que viu antes.
         clearstatcache(true, $canonical);
         clearstatcache(true, $real);
 
@@ -223,27 +222,21 @@ final class PrivateUploadBridge
         }
 
         // No Windows, symlink() de diretório exige Modo desenvolvedor ligado
-        // ou elevação — uma junção NTFS (mklink /J) faz o mesmo sem precisar
-        // de nenhum dos dois, mas só entre caminhos locais (sem UNC/rede).
-        if (PHP_OS_FAMILY === 'Windows' && $this->createWindowsJunction($canonical, $realResolved)) {
-            clearstatcache(true, $canonical);
-
-            return null;
+        // ou elevação. Uma junção NTFS (mklink /J) resolveria sem precisar de
+        // nenhum dos dois, mas criá-la exige um shell (mklink é built-in do
+        // cmd.exe, sem executável próprio) — e `cmd /c` sempre reinterpreta a
+        // linha inteira como sintaxe de shell, então nenhuma forma de invocar
+        // um processo externo aqui é estruturalmente segura contra os dois
+        // caminhos (o padrão e o escolhido pelo admin). Preferimos NÃO
+        // executar nada e devolver o comando pronto para rodar à mão.
+        if (PHP_OS_FAMILY === 'Windows') {
+            return "não foi possível criar o link {$canonical} -> {$realResolved}: symlink() "
+                . 'precisa do Modo desenvolvedor ligado ou de elevação neste PHP. '
+                . 'Ligue o Modo desenvolvedor (ou rode a migração como administrador) e tente de novo, '
+                . "ou crie a junção você mesmo num prompt: mklink /J \"{$canonical}\" \"{$realResolved}\"";
         }
 
-        $hint = PHP_OS_FAMILY === 'Windows'
-            ? ' (no Windows, ligue o Modo desenvolvedor ou rode como administrador)'
-            : '';
-
-        return "não foi possível criar o link {$canonical} -> {$realResolved}{$hint}";
-    }
-
-    private function createWindowsJunction(string $canonical, string $real): bool
-    {
-        $cmd = 'cmd /c mklink /J ' . escapeshellarg($canonical) . ' ' . escapeshellarg($real);
-        @exec($cmd, $output, $code);
-
-        return $code === 0;
+        return "não foi possível criar o link {$canonical} -> {$realResolved}";
     }
 
     private function samePath(string $a, string $b): bool
