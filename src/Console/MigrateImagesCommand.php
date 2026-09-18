@@ -212,7 +212,15 @@ class MigrateImagesCommand extends AbstractCommand
             'path' => $this->store->directoryHint($this->paths->public),
         ]));
         if ($this->private->available()) {
-            $this->info($this->trans('images.restricted', ['path' => $this->private->directoryHint()]));
+            $this->private->useDirectory($this->privateUploadsDir($this->settings));
+
+            $this->info($this->trans('images.restricted', [
+                'path' => $this->private->realDirectoryHint() ?? $this->private->directoryHint(),
+            ]));
+
+            if (($notice = $this->private->directoryNotice()) !== null) {
+                $this->info($this->trans('images.restricted_dir_warning', ['error' => $notice]));
+            }
         }
         $this->info($this->trans('images.line_hosts', [
             'hosts' => $allHosts ? $this->trans('images.hosts_all') : implode(', ', $hosts),

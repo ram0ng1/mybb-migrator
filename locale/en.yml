@@ -169,6 +169,15 @@ ramon-mybb-migrator:
         Path to the MyBB “uploads” folder. When set, attachments are copied
         straight from disk; otherwise they are downloaded from the old site URL,
         which only works while attachments are publicly readable there.
+      private_uploads_dir: Private uploads folder (optional)
+      private_uploads_dir_hint: >-
+        Where files from discussions guests can't see actually live — leave
+        empty to use the default (inside this forum's storage folder). Pick
+        this when that disk is small, or you'd rather keep these files on a
+        separate volume/backup schedule. storage/dfs-private-uploads (what
+        ramon/dfs, if installed, reads from) keeps pointing here through a
+        symlink/junction, so it still finds the files; an existing folder with
+        files in it is left untouched, never moved automatically.
       directory: Files are written to
       detect: Auto-detect
       detect_failed: Auto-detection failed.
@@ -329,6 +338,7 @@ ramon-mybb-migrator:
       sample_suffix: (sample)
       hosts_more: "    … and {count} more host(s), all included. The full list is on the \"Images\" tab."
       restricted: "  restricted: {path}  (images from discussions invisible to guests are born HERE, never in public)"
+      restricted_dir_warning: "⚠ could not use the chosen private folder as-is: {error}"
       line_hosts: "Hosts   : {hosts}"
       hosts_all: (every external host)
       limit_downloads: "{count} downloads"
@@ -371,6 +381,7 @@ ramon-mybb-migrator:
       source_local: "local folder {path}"
       source_download: "download from {url}"
       restricted: "  restricted: {path}  (attachments from discussions invisible to guests are born HERE)"
+      restricted_dir_warning: "⚠ could not use the chosen private folder as-is: {error}"
       limit_files: "{count} attachments"
       limit_files_none: no cap
       optimize_images_only: (image attachments only)

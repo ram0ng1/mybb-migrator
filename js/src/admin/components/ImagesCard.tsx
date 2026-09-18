@@ -112,6 +112,8 @@ export default class ImagesCard extends Component<Attrs> {
           <div className="MmHint">{trans("images.attachments_dir_hint")}</div>
         </div>
 
+        {this.privateDirField(media)}
+
         <div className="MmActions">
           <Button
             className="Button Button--primary"
@@ -315,6 +317,37 @@ export default class ImagesCard extends Component<Attrs> {
     );
   }
 
+  /**
+   * Onde os uploads de discussão privada moram de verdade.
+   *
+   * Só aparece quando o mecanismo (ramon/dfs) existe nesta instalação — sem
+   * ele tudo é gravado público sempre, e o campo não teria efeito nenhum.
+   * O caminho padrão some sozinho no placeholder, para não repetir o que já
+   * está escrito ali de qualquer forma.
+   */
+  private privateDirField(media: MediaConfig): Mithril.Children {
+    if (!media.private_available) return null;
+
+    return (
+      <div className="MmField MmField--wide">
+        <label>{trans("images.private_uploads_dir")}</label>
+        <input
+          className="FormControl"
+          type="text"
+          placeholder={media.private_default_dir}
+          title={trans("images.private_uploads_dir")}
+          value={this.form.private_uploads_dir ?? ""}
+          oninput={(e: InputEvent) =>
+            (this.form.private_uploads_dir = (
+              e.target as HTMLInputElement
+            ).value)
+          }
+        />
+        <div className="MmHint">{trans("images.private_uploads_dir_hint")}</div>
+      </div>
+    );
+  }
+
   private seed(media: MediaConfig): void {
     if (this.seeded) return;
     this.form = {
@@ -332,6 +365,7 @@ export default class ImagesCard extends Component<Attrs> {
       imgur_client_id: media.imgur_client_id,
       imgur_daily_cap: media.imgur_daily_cap,
       attachments_dir: media.attachments_dir,
+      private_uploads_dir: media.private_uploads_dir,
     };
     this.seeded = true;
   }

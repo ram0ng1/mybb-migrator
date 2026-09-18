@@ -17,10 +17,9 @@ namespace Ramon\MybbMigrator\Support;
  * devolve o `link` DIRETO com a extensão certa (uma requisição em vez de até
  * cinco), diz com clareza quando a imagem não existe (404 = `failed` de vez, e
  * não "HTML devolvido"), e vem com uma cota conhecida: ~12.500 chamadas por
- * dia por aplicação. O teto configurável (padrão 10.000) fica abaixo disso de
- * propósito, para o run nunca ser o culpado de a aplicação inteira ser
- * bloqueada — e para sobrar folga se o admin usa o mesmo Client-ID em outro
- * lugar.
+ * dia por aplicação. O teto local é opcional e fica desligado por padrão;
+ * o admin pode definir um valor menor quando compartilhar o Client-ID com
+ * outro processo.
  *
  * O download do `link` em si (i.imgur.com) NÃO conta na cota da API; só a
  * consulta conta. E a cota é DIÁRIA, então o contador precisa sobreviver ao
@@ -46,8 +45,8 @@ final class ImgurClient
      */
     public const CREDITS = 'https://api.imgur.com/3/credits';
 
-    /** Teto padrão de chamadas/dia — abaixo dos ~12.500 que o imgur concede. */
-    public const DEFAULT_DAILY_CAP = 10000;
+    /** 0 = sem teto local; a API do Imgur continua aplicando a quota dela. */
+    public const DEFAULT_DAILY_CAP = 0;
 
     private string $day;
 

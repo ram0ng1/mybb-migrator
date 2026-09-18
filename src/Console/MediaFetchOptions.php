@@ -34,8 +34,12 @@ trait MediaFetchOptions
      *                      botão que não liga em nada.
      * @param bool $imgur   true só onde há URLs de imgur para resolver (imagens
      *                      de posts); anexos do MyBB nunca vêm de lá.
+     * @param bool $private false num comando que só re-otimiza o que já está no
+     *                       disco: ele nunca DECIDE onde um arquivo novo nasce,
+     *                       só lê o que já está lá — pelo caminho canônico, que
+     *                       o link (se um run anterior o criou) já resolve sozinho.
      */
-    protected function addMediaFetchOptions(bool $network = true, bool $imgur = false): void
+    protected function addMediaFetchOptions(bool $network = true, bool $imgur = false, bool $private = true): void
     {
         if ($network) {
             $this
@@ -49,7 +53,11 @@ trait MediaFetchOptions
         if ($network && $imgur) {
             $this
                 ->addOption('imgur-client-id', null, InputOption::VALUE_REQUIRED, 'imgur API Client-ID: resolves each image with one authenticated call instead of guessing extensions (overrides the panel setting).')
-                ->addOption('imgur-daily-cap', null, InputOption::VALUE_REQUIRED, 'Maximum imgur API calls per UTC day, persisted across runs (default ' . ImgurClient::DEFAULT_DAILY_CAP . '; 0 = no cap).');
+                ->addOption('imgur-daily-cap', null, InputOption::VALUE_REQUIRED, 'Maximum imgur API calls per UTC day, persisted across runs (default no local cap; 0 = no cap).');
+        }
+
+        if ($private) {
+            $this->addOption('private-dir', null, InputOption::VALUE_REQUIRED, 'Where private-discussion uploads are actually stored (overrides the panel setting). storage/dfs-private-uploads keeps pointing here via a symlink/junction, so ramon/dfs (or anything else reading that path) still finds them.');
         }
 
         $this
@@ -58,6 +66,22 @@ trait MediaFetchOptions
             ->addOption('quality', null, InputOption::VALUE_REQUIRED, 'Re-encoding quality, 30-100.')
             ->addOption('max-dim', null, InputOption::VALUE_REQUIRED, 'Resize images whose longest side exceeds this many pixels (0 = never resize).')
             ->addOption('min-gain', null, InputOption::VALUE_REQUIRED, 'Minimum size gain, in percent, for the re-encoded file to be kept (0 = keep whenever it is not bigger).');
+    }
+
+    /**
+     * Pasta privada escolhida pelo admin — `--private-dir`, senão o painel.
+     * Vazio = sem override: o caminho canônico ({@see PrivateUploadBridge})
+     * continua sendo a própria pasta, como sempre foi.
+     */
+    protected function privateUploadsDir(SettingsRepositoryInterface $settings): string
+    {
+        $dir = trim((string) ($this->input->getOption('private-dir') ?? ''));
+
+        if ($dir === '') {
+            $dir = trim((string) ($settings->get('mybb-migrator.private_uploads_dir') ?? ''));
+        }
+
+        return $dir;
     }
 
     protected function fetchRetries(SettingsRepositoryInterface $settings): int
