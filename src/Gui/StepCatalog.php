@@ -51,7 +51,9 @@ class StepCatalog
             self::s('messages-drop-byobu', 'mybb:messages-drop-byobu', '2', dangerous: true, options: ['dry-run', 'include-native'], manual: true),
             self::s('polls',          'mybb:polls',          '2', options: ['dry-run']),
             self::s('trade-feedback', 'mybb:trade-feedback', '2'),
-            self::s('reviews',        'mybb:reviews',        '2'),
+            // --photo-owner fica de fora do painel: o valor "1" (id do admin) chegaria
+            // como flag booleana (GuiRunCommand trata '1' como true).
+            self::s('reviews',        'mybb:reviews',        '2', options: ['dry-run', 'photos', 'photo-base-url']),
             self::s('make-admin',     'mybb:make-admin',     '2', options: ['username', 'like'], requiresUsername: true, manual: true),
 
             // ---- Mídia: imagens remotas e anexos (fora das sequências) ----
