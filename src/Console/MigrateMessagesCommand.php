@@ -38,8 +38,8 @@ use Symfony\Component\Console\Input\InputOption;
  *
  * O que NÃO vira conversa (e aparece no resumo): rascunhos (folder=3 — não há
  * rascunho de mensagem no flarum/messages e eles nunca foram enviados), PMs para
- * si mesmo, grupos sem o group-messages ativo e conversas sem nenhum
- * participante existente no Flarum.
+ * si mesmo, grupos sem o group-messages ativo e conversas com participante
+ * ausente no Flarum (ver membersOf() e --keep-missing-users).
  *
  * Re-executar é seguro: antes de gravar, apaga só as conversas que ESTE comando
  * criou (tabela mybb_migrated_dialogs) e que ninguém tocou depois. Conversas
@@ -86,7 +86,7 @@ class MigrateMessagesCommand extends AbstractCommand
             ->addOption('force', null, InputOption::VALUE_NONE, 'Confirm the execution (re-runs replace only what this command created).')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview changes without writing.')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Create at most N conversations.', null)
-            ->addOption('skip-missing-users', null, InputOption::VALUE_NONE, 'Skip a whole conversation when any participant is missing from Flarum (default: keep it for the members that exist, with the missing author shown as a deleted user).')
+            ->addOption('keep-missing-users', null, InputOption::VALUE_NONE, 'Keep conversations that have a participant missing from Flarum, for the members that exist (the missing author shows as a deleted user). Default: skip them, as before.')
             ->addOption('no-subject-header', null, InputOption::VALUE_NONE, 'Do not prepend the MyBB subject (in bold) to the message that opens each subject of a direct conversation.');
 
         $this->addMybbConnectionOptions();
@@ -98,7 +98,7 @@ class MigrateMessagesCommand extends AbstractCommand
         $force  = (bool) $this->input->getOption('force');
         $limit  = $this->input->getOption('limit');
         $limit  = $limit === null ? null : max(1, (int) $limit);
-        $skipMissing   = (bool) $this->input->getOption('skip-missing-users');
+        $skipMissing   = ! $this->input->getOption('keep-missing-users');
         $subjectHeader = ! $this->input->getOption('no-subject-header');
 
         if (! $force && ! $dryRun) {
@@ -188,11 +188,17 @@ class MigrateMessagesCommand extends AbstractCommand
      * (e o motivo entra no resumo).
      *
      * Participante ausente no Flarum (conta apagada antes da migração): por
-     * padrão a conversa é mantida para quem existe, e as mensagens dele ficam
-     * sem autor — exatamente o que o flarum/messages faz quando um membro apaga
-     * a conta (DialogServiceProvider põe user_id = null), e o que o MyBB fazia
-     * (a cópia do destinatário sobrevivia ao remetente). --skip-missing-users
-     * volta ao comportamento antigo: pula a conversa inteira.
+     * padrão a conversa inteira é pulada, como a migração para o byobu fazia.
+     * Com --keep-missing-users ela é mantida para quem existe e as mensagens
+     * dele ficam sem autor — exatamente o que o flarum/messages faz quando um
+     * membro apaga a conta (DialogServiceProvider põe user_id = null), e o que
+     * o MyBB fazia (a cópia do destinatário sobrevivia ao remetente).
+     *
+     * Por que não é o padrão: o frontend do flarum/messages 2.0.2 quebra
+     * (TypeError "reading 'view'") ao abrir uma conversa com mensagem sem
+     * autor — o mesmo acontece com uma conta apagada no próprio Flarum. Quando
+     * isso for corrigido, basta re-executar com a opção: a re-execução só
+     * acrescenta as conversas que faltavam (as já migradas são recriadas iguais).
      *
      * @param array{type: string, participants: list<int>} $conv
      * @param array<int, true> $validUids

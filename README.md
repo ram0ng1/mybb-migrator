@@ -282,7 +282,7 @@ Sent Items. `mybb:messages` rebuilds every message from all of its copies
 | Trash (folder 4) | the message is migrated; if *all* of a member's copies of a conversation were in the trash (or deleted), it goes to that member's pigeonhole **archive** (read, out of the list, back on the next reply). |
 | Drafts (folder 3) | **not migrated** — `flarum/messages` has no drafts and they were never sent (counted in the summary). |
 | PMs to yourself | not migrated (a conversation needs two people). |
-| author no longer in Flarum | the conversation is kept for the members that exist and their messages show as a deleted user, as `flarum/messages` does when an account is deleted. `--skip-missing-users` skips such conversations instead. |
+| participant no longer in Flarum | the conversation is **skipped** (counted), as before. `--keep-missing-users` keeps it for the members that exist, with the missing author shown as a deleted user — what `flarum/messages` does when an account is deleted. Not the default because the `flarum/messages` 2.0.2 frontend fails to open a conversation holding a message without an author (same with an account deleted in Flarum); re-run with the option once that is fixed. |
 
 Bodies go through the same BBCode converter as posts and are stored already
 parsed (no `mybb:fix-pm-parse` needed); mentions and `anyone_can_reply` are

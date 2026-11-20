@@ -44,7 +44,7 @@ class StepCatalog
 
             // ---- Fase 2: conteúdo secundário ----
             self::s('subscriptions',  'mybb:subscriptions',  '2'),
-            self::s('messages',       'mybb:messages',       '2', options: ['dry-run', 'limit', 'skip-missing-users', 'no-subject-header']),
+            self::s('messages',       'mybb:messages',       '2', options: ['dry-run', 'limit', 'keep-missing-users', 'no-subject-header']),
             // Limpeza das discussões privadas que a versão antiga de
             // mybb:messages criou no fof/byobu. Manual: é destrutiva e só faz
             // sentido depois de conferir as conversas no flarum/messages.

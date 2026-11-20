@@ -32,7 +32,7 @@ const BOOL_OPTS = [
   "include-orphans",
   "include-avatars",
   "skip-map",
-  "skip-missing-users",
+  "keep-missing-users",
   "no-subject-header",
   "include-native",
 ];
