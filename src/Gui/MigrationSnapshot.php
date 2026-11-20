@@ -30,7 +30,9 @@ class MigrationSnapshot
         'flarum-approval'             => false,
         'flarum-bbcode'               => false,
         'flarum-markdown'             => false,
-        'fof-byobu'                   => false,
+        'flarum-messages'             => false, // mensagens privadas
+        'ernestdefoe-group-messages'  => false, // PMs com 3+ participantes
+        'ernestdefoe-pigeonhole'      => false, // pastas e arquivo das PMs
         'fof-polls'                   => false,
         'fof-upload'                  => false,
         'fof-signature'               => false, // assinaturas dos posts

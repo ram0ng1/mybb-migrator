@@ -45,6 +45,7 @@ use Ramon\MybbMigrator\Console\MigrateImagesCommand;
 use Ramon\MybbMigrator\Console\MigratePermissionsCommand;
 use Ramon\MybbMigrator\Console\MigrateLikesCommand;
 use Ramon\MybbMigrator\Console\MigrateMessagesCommand;
+use Ramon\MybbMigrator\Console\DropByobuMessagesCommand;
 use Ramon\MybbMigrator\Console\CompactQuotesCommand;
 use Ramon\MybbMigrator\Console\FixTapatalkEmojiCommand;
 use Ramon\MybbMigrator\Console\MigratePollsCommand;
@@ -177,6 +178,7 @@ return [
         ->command(MakeAdminCommand::class)
         ->command(MigrateSubscriptionsCommand::class)
         ->command(MigrateMessagesCommand::class)
+        ->command(DropByobuMessagesCommand::class)
         ->command(MigratePollsCommand::class)
         ->command(MigrateTradeFeedbackCommand::class)
         ->command(MigrateReviewsCommand::class)

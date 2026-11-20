@@ -270,7 +270,8 @@ ramon-mybb-migrator:
         permissions: Default + custom-group permissions.
         forum-perms: Per-forum view restrictions → tag permissions.
         subscriptions: Thread/forum follows.
-        messages: Private messages → fof/byobu.
+        messages: Private messages → flarum/messages (3+ people → group-messages groups, folders → pigeonhole). Re-runs replace only conversations it created.
+        messages-drop-byobu: Deletes the fof/byobu private discussions the old messages step created (never public discussions). Removing fof/byobu does not delete them.
         polls: Polls + votes → fof/polls.
         trade-feedback: iTrader feedback → traderfeedback.
         reviews: Community Reviews → traderfeedback.
