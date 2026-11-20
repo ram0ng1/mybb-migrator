@@ -17,7 +17,8 @@ What it migrates:
 - **Threads -> Discussions** and **Posts -> Posts**, with **BBCode -> Flarum**
   conversion (s9e), mojibake repair, sticky/locked/soft-deleted flags, and
   extraction of user/post **mentions**.
-- **Likes**, **Subscriptions**, **Private Messages** (-> `fof/byobu`),
+- **Likes**, **Subscriptions**, **Private Messages** (-> `flarum/messages`, with
+  `ernestdefoe/group-messages` groups and `ernestdefoe/pigeonhole` folders),
   **Polls** (-> `fof/polls`), **iTrader feedback** and **Community Reviews**
   (-> `huseyinfiliz/traderfeedback`), **avatars** (URL backfill), **signatures**.
 
@@ -48,7 +49,9 @@ write directly into their tables:
 | `flarum/lock` | closed threads -> `is_locked` |
 | `flarum/approval` | soft-deleted / unapproved state |
 | `flarum/bbcode` + `flarum/markdown` | rendering of converted BBCode |
-| `fof/byobu` | private messages |
+| `flarum/messages` | private messages (`mybb:messages`) |
+| `ernestdefoe/group-messages` | PMs with 3+ participants (skipped without it) |
+| `ernestdefoe/pigeonhole` | MyBB custom PM folders + archive (not migrated without it) |
 | `fof/polls` | polls + votes |
 | `fof/upload` | attachments / uploaded files |
 | `huseyinfiliz/traderfeedback` | iTrader + Community Reviews |
@@ -201,7 +204,7 @@ ID/foreign-key dependencies between MyBB and Flarum. Run the phases top to botto
 | | 7 | `mybb:permissions` | default + custom-group permissions |
 | | 8 | `mybb:forum-perms` | per-forum view restrictions → tag perms |
 | **2 — Secondary** | 9 | `mybb:subscriptions` | thread/forum follows |
-| | 10 | `mybb:messages` | private messages (`fof/byobu`) |
+| | 10 | `mybb:messages` | private messages (`flarum/messages` + group-messages + pigeonhole) |
 | | 11 | `mybb:polls` | polls + votes (`fof/polls`) |
 | | 12 | `mybb:trade-feedback` | iTrader (`traderfeedback`) |
 | | 13 | `mybb:reviews` | Community Reviews (`traderfeedback`) |
@@ -253,12 +256,66 @@ Why this order:
 
 ```bash
 php flarum mybb:subscriptions --force   # thread/forum follows -> flarum/subscriptions
-php flarum mybb:messages      --force   # private messages -> fof/byobu private discussions
+php flarum mybb:messages      --force   # private messages -> flarum/messages (see "Private messages" below)
+php flarum mybb:messages-drop-byobu --force # optional, after checking: delete the old fof/byobu PM copy
 php flarum mybb:polls         --force   # polls + votes -> fof/polls
 php flarum mybb:trade-feedback --force  # iTrader feedback -> traderfeedback
 php flarum mybb:reviews       --force   # Community Reviews -> traderfeedback
 php flarum mybb:make-admin --username ramon --force   # promote your own account to Admin
 ```
+
+### Private messages (`mybb:messages`)
+
+MyBB keeps **one copy of a PM per owner** — in each recipient's Inbox (or the
+folder they moved it to) and, when "save a copy" was ticked, in the sender's
+Sent Items. `mybb:messages` rebuilds every message from all of its copies
+(so PMs sent without a saved copy are not lost) and writes them into
+`flarum/messages`:
+
+| MyBB | Flarum |
+|---|---|
+| PMs between two people | **one direct conversation per pair** (that is how `flarum/messages` works: it has no subjects and opens one conversation per pair). The subject is kept as a bold first line on the message that opens each new subject; `RE:` replies don't repeat it (`--no-subject-header` turns this off). |
+| PMs with 3+ participants | a group of `ernestdefoe/group-messages`, one per participant set + subject, named after the subject, owned by whoever started it. **Skipped (and counted) when group-messages is not enabled.** |
+| BCC recipients | a separate direct conversation with the sender — never added to the visible group, which would reveal them. |
+| read / unread of each copy (`status`, `readtime`) | each member's `dialog_user.last_read_message_id` (stops before the first message they had not read) |
+| custom folders (`users.pmfolders`, fid ≥ 5) | `ernestdefoe/pigeonhole` folders of that member. A conversation goes into the folder of the member's most recent copy that was in a custom folder. Inbox/Sent are not folders. |
+| Trash (folder 4) | the message is migrated; if *all* of a member's copies of a conversation were in the trash (or deleted), it goes to that member's pigeonhole **archive** (read, out of the list, back on the next reply). |
+| Drafts (folder 3) | **not migrated** — `flarum/messages` has no drafts and they were never sent (counted in the summary). |
+| PMs to yourself | not migrated (a conversation needs two people). |
+| author no longer in Flarum | the conversation is kept for the members that exist and their messages show as a deleted user, as `flarum/messages` does when an account is deleted. `--skip-missing-users` skips such conversations instead. |
+
+Bodies go through the same BBCode converter as posts and are stored already
+parsed (no `mybb:fix-pm-parse` needed); mentions and `anyone_can_reply` are
+filled in as the extension would. No notifications are sent.
+
+**Re-running is safe.** Everything the command creates is recorded in
+`mybb_migrated_dialogs` / `mybb_migrated_pm_folders` (run `php flarum migrate`
+first). A re-run deletes and recreates only those conversations — and keeps,
+untouched, any migrated conversation that got a new message, a reaction or a
+reply in Flarum since. Conversations members started in Flarum are never
+touched. Folders are reused, not recreated. `--dry-run` and `--limit=N` work as
+usual.
+
+#### Dropping the old fof/byobu copy
+
+Earlier versions of `mybb:messages` wrote PMs as `fof/byobu` private
+discussions. **Removing fof/byobu does not delete them**: disabling it changes
+nothing, and uninstalling/purging it only drops the `recipients` table and the
+`users.blocks_byobu_pd` column — the private discussions and their posts stay in
+the database, hidden. Once the conversations look right in `flarum/messages`:
+
+```bash
+php flarum mybb:messages-drop-byobu --dry-run   # count what would go
+php flarum mybb:messages-drop-byobu --force     # delete it
+```
+
+It deletes only private discussions (`is_private = 1`) with the old migrator's
+signature (`slug` equal to the discussion id) — never a public discussion —
+together with their posts, recipients, `discussion_user`, tags, notifications,
+mentions, likes, reactions, flags and upload links. `--include-native` also
+deletes the byobu private discussions members created in Flarum (needs the
+`recipients` table, i.e. byobu not yet purged). It works before or after
+removing fof/byobu.
 
 ### Media — remote images & attachments (opt-in, budgeted)
 
@@ -637,7 +694,7 @@ php flarum mybb:reimport-signatures  --force # re-import signatures BBCode -> s9
 php flarum mybb:fix-usernames        --force # remove invalid chars from usernames
 php flarum mybb:apply-nicknames      --force # old_username -> nickname + kebab slug
 
-php flarum mybb:fix-pm-parse         --force # re-parse PM bodies left as raw BBCode
+php flarum mybb:fix-pm-parse         --force # re-parse old fof/byobu PM posts left as raw BBCode
 php flarum mybb:recover-protected    --force # rebuild posts with literal PROTECTED_N
 ```
 
@@ -700,6 +757,7 @@ migrations/
   2026_05_29_100001_create_mybb_legacy_passwords_table.php
   2026_08_17_100001_create_mybb_migrated_images_table.php   # remote URL -> local file map
   2026_08_17_100002_add_progress_to_mybb_migration_steps.php # live progress for the panel's bar
+  2026_11_20_100001_create_mybb_migrated_dialogs_table.php  # what mybb:messages created (safe re-runs)
 extend.php                         # registers the password checker + all commands
 ```
 
