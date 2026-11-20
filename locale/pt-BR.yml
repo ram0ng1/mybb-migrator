@@ -276,7 +276,7 @@ ramon-mybb-migrator:
         messages-drop-byobu: Apaga as discussões privadas do fof/byobu que o passo antigo de mensagens criou (nunca discussões públicas). Remover o fof/byobu não as apaga.
         polls: Enquetes + votos → fof/polls.
         trade-feedback: Feedback do iTrader → traderfeedback.
-        reviews: Avaliações da comunidade → traderfeedback.
+        reviews: Avaliações da comunidade (Community Reviews) → community-reviews (ernestdefoe).
         make-admin: Promove sua conta a Admin (informe o usuário).
         images: Baixa as imagens remotas usadas pelos posts migrados e reaponta os posts para a cópia local. Pula URLs já internalizadas; lembra as mortas.
         attachments: Migra os anexos dos posts do MyBB para o armazenamento local e os acrescenta aos posts migrados.
