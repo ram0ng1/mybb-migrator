@@ -272,7 +272,8 @@ ramon-mybb-migrator:
         permissions: Permissões padrão + de grupos personalizados.
         forum-perms: Restrições de visualização por fórum → permissões de tag.
         subscriptions: Acompanhamentos de tópico/fórum.
-        messages: Mensagens privadas → fof/byobu.
+        messages: Mensagens privadas → flarum/messages (3+ pessoas → grupos do group-messages, pastas → pigeonhole). Rodar de novo substitui só as conversas que ele criou.
+        messages-drop-byobu: Apaga as discussões privadas do fof/byobu que o passo antigo de mensagens criou (nunca discussões públicas). Remover o fof/byobu não as apaga.
         polls: Enquetes + votos → fof/polls.
         trade-feedback: Feedback do iTrader → traderfeedback.
         reviews: Avaliações da comunidade (Community Reviews) → community-reviews (ernestdefoe).

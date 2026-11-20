@@ -11,7 +11,8 @@ use Symfony\Component\Console\Input\InputOption;
  *
  * Trunca as tabelas de conteúdo do core (users, discussions, posts, tags,
  * pivots e tokens) e das extensões diretamente envolvidas na migração
- * (likes, mentions, reactions, byobu, polls, recipients). Os grupos do
+ * (likes, mentions, reactions, byobu, polls, recipients e as conversas do
+ * flarum/messages com grupos e pastas). Os grupos do
  * core (1..4: Admin/Guest/Member/Mod) são preservados; grupos customizados
  * (id > 4) são apagados.
  *
@@ -47,6 +48,15 @@ class WipeCommand extends AbstractCommand
             'post_likes', 'post_reactions', 'post_anonymous_reactions',
             'post_user', 'flags',
             'recipients',
+            // flarum/messages + group-messages + pigeonhole: as PMs migradas
+            // moram aqui agora, e todas referenciam users.
+            'mybb_migrated_pm_folders', 'mybb_migrated_dialogs',
+            'pigeonhole_filings', 'pigeonhole_folders',
+            'group_dialog_moderators', 'group_dialogs',
+            'dialog_message_reactions', 'dialog_message_replies',
+            'dialog_message_mentions_user', 'dialog_message_mentions_post',
+            'dialog_message_mentions_group', 'dialog_message_mentions_tag',
+            'dialog_user', 'dialog_messages', 'dialogs',
             'poll_votes', 'poll_options', 'poll_groups', 'polls',
             'posts',
             'discussion_tag', 'discussion_user', 'tag_user',

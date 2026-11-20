@@ -44,7 +44,11 @@ class StepCatalog
 
             // ---- Fase 2: conteúdo secundário ----
             self::s('subscriptions',  'mybb:subscriptions',  '2'),
-            self::s('messages',       'mybb:messages',       '2', options: ['dry-run', 'limit']),
+            self::s('messages',       'mybb:messages',       '2', options: ['dry-run', 'limit', 'keep-missing-users', 'no-subject-header']),
+            // Limpeza das discussões privadas que a versão antiga de
+            // mybb:messages criou no fof/byobu. Manual: é destrutiva e só faz
+            // sentido depois de conferir as conversas no flarum/messages.
+            self::s('messages-drop-byobu', 'mybb:messages-drop-byobu', '2', dangerous: true, options: ['dry-run', 'include-native'], manual: true),
             self::s('polls',          'mybb:polls',          '2', options: ['dry-run']),
             self::s('trade-feedback', 'mybb:trade-feedback', '2'),
             // --photo-owner fica de fora do painel: o valor "1" (id do admin) chegaria

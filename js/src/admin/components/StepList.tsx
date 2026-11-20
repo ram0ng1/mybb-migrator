@@ -32,6 +32,9 @@ const BOOL_OPTS = [
   "include-orphans",
   "include-avatars",
   "skip-map",
+  "keep-missing-users",
+  "no-subject-header",
+  "include-native",
 ];
 
 /** Opções cujo input é numérico (as demais com valor são texto livre). */
