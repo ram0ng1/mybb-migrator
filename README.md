@@ -18,8 +18,9 @@ What it migrates:
   conversion (s9e), mojibake repair, sticky/locked/soft-deleted flags, and
   extraction of user/post **mentions**.
 - **Likes**, **Subscriptions**, **Private Messages** (-> `fof/byobu`),
-  **Polls** (-> `fof/polls`), **iTrader feedback** and **Community Reviews**
-  (-> `huseyinfiliz/traderfeedback`), **avatars** (URL backfill), **signatures**.
+  **Polls** (-> `fof/polls`), **iTrader feedback** (-> `huseyinfiliz/traderfeedback`),
+  **Community Reviews** (-> `ernestdefoe/community-reviews`), **avatars** (URL
+  backfill), **signatures**.
 
 ---
 
@@ -51,7 +52,8 @@ write directly into their tables:
 | `fof/byobu` | private messages |
 | `fof/polls` | polls + votes |
 | `fof/upload` | attachments / uploaded files |
-| `huseyinfiliz/traderfeedback` | iTrader + Community Reviews |
+| `huseyinfiliz/traderfeedback` | iTrader trader feedback |
+| `ernestdefoe/community-reviews` | Community Reviews (product reviews) |
 | `michaelbelgium/mybb-to-flarum` | **optional companion** — see below |
 
 ### About `michaelbelgium/mybb-to-flarum`
@@ -204,7 +206,7 @@ ID/foreign-key dependencies between MyBB and Flarum. Run the phases top to botto
 | | 10 | `mybb:messages` | private messages (`fof/byobu`) |
 | | 11 | `mybb:polls` | polls + votes (`fof/polls`) |
 | | 12 | `mybb:trade-feedback` | iTrader (`traderfeedback`) |
-| | 13 | `mybb:reviews` | Community Reviews (`traderfeedback`) |
+| | 13 | `mybb:reviews` | Community Reviews (`community-reviews`) |
 | | 14 | `mybb:make-admin` | promote your own account to Admin |
 | **3 — Cleanup** | — | `mybb:fix-*` / `mybb:revert-*` | data-specific fidelity passes — run only what you need |
 
@@ -256,8 +258,57 @@ php flarum mybb:subscriptions --force   # thread/forum follows -> flarum/subscri
 php flarum mybb:messages      --force   # private messages -> fof/byobu private discussions
 php flarum mybb:polls         --force   # polls + votes -> fof/polls
 php flarum mybb:trade-feedback --force  # iTrader feedback -> traderfeedback
-php flarum mybb:reviews       --force   # Community Reviews -> traderfeedback
+php flarum mybb:reviews       --force   # Community Reviews -> ernestdefoe/community-reviews
 php flarum mybb:make-admin --username ramon --force   # promote your own account to Admin
+```
+
+#### Community Reviews (`mybb:reviews`)
+
+Moves the MyBB *Community Reviews* plugin into `ernestdefoe/community-reviews`,
+keeping every MyBB id (so links like `/reviews/i/{id}-{slug}` are predictable and
+re-runs are idempotent: rows already present are skipped, never duplicated or
+overwritten).
+
+| MyBB (`{prefix}community_reviews*`) | community-reviews | Notes |
+|---|---|---|
+| `_categories` (id, name, order) | `community_review_categories` | flat (no parent); slug generated like the extension's admin does (`razors`, `razors-2`…) |
+| `_fields` (id, category_id, name, order) | `community_review_criteria` | weight 1 = MyBB's plain average |
+| `_products` (id, category_id, name, date, user_id, views) | `community_review_items` | `views` → `view_count`; slug = `Str::slug(name)`; status `approved` |
+| `community_reviews` (id, product_id, user_id, date, price, url, comment) | `community_reviews` | `comment` → `body` (BBCode converted, then parsed by Flarum's formatter, same as the extension stores it); status `approved` |
+| `_merchants` (review_id, user_id) | `community_reviews.merchant_id` | |
+| `_review_fields` (id, review_id, field_id, comment, rating) | `community_review_scores` | `rating` 1-5 → `score`; a 0 means "not rated" and is skipped; a score for a criterion of another category than the item's is skipped |
+| `_photos` (id, review_id, url, thumbnail_url, order) | `community_review_photos` | see `--photos` |
+| `_comments` (id, product_id, review_id, user_id, date, comment) | `community_review_comments` | `review_id` kept only when that review belongs to the same item |
+
+Authors missing from Flarum become `NULL` (shown as *[deleted]*), except photo
+owners, which the extension requires: a photo then belongs to the reviewer, or
+to `--photo-owner=ID`, or is skipped (and counted). Derived fields are always
+recomputed at the end: each review's `rating` (weighted average of its scores)
+and `comment_count`, then every item and category through the extension's own
+`Aggregates` (rating, ranking, per-criterion averages, star distribution,
+thumbnail, counts, last activity). MyBB's `cached_rating` is not copied.
+
+Photos (`--photos`):
+
+- `link` (default) — the MyBB URL (imgur, for that plugin) goes to `url`/`thumb_url`,
+  exactly like an imgur photo posted through the extension.
+- `download` — each file is fetched with the migrator's `ImageFetcher` and handed to
+  the extension's own `Photo\Uploader` (type check, WebP, thumbnail, private disk
+  `storage/community-reviews`, served by `/reviews/photo/{id}`). A failed download
+  keeps the link, so nothing is lost.
+- `skip` — no photos.
+
+Paths stored relative to the MyBB site are resolved against `--photo-base-url`
+(default: the panel's *old site URL*); without one they are skipped and counted.
+
+```bash
+php flarum mybb:reviews --dry-run                       # read + convert, write nothing
+php flarum mybb:reviews --force --photos=download --photo-owner=1
+# Old versions of this command wrote to tfb_* review tables. Clean them up
+# (only tfb_review_categories/fields/field_ratings/photos/comments, tfb_products,
+# tfb_product_reviews; the trader feedback tables are never touched):
+php flarum mybb:reviews --purge-legacy --dry-run
+php flarum mybb:reviews --purge-legacy --force
 ```
 
 ### Media — remote images & attachments (opt-in, budgeted)

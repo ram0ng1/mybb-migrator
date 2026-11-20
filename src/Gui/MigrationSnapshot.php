@@ -34,7 +34,8 @@ class MigrationSnapshot
         'fof-polls'                   => false,
         'fof-upload'                  => false,
         'fof-signature'               => false, // assinaturas dos posts
-        'huseyinfiliz-traderfeedback' => false,
+        'huseyinfiliz-traderfeedback' => false, // iTrader (mybb:trade-feedback)
+        'ernestdefoe-community-reviews' => false, // Community Reviews (mybb:reviews)
     ];
 
     public function __construct(

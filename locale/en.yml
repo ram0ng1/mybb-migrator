@@ -273,7 +273,7 @@ ramon-mybb-migrator:
         messages: Private messages → fof/byobu.
         polls: Polls + votes → fof/polls.
         trade-feedback: iTrader feedback → traderfeedback.
-        reviews: Community Reviews → traderfeedback.
+        reviews: Community Reviews → community-reviews (ernestdefoe).
         make-admin: Promote your account to Admin (set the username).
         images: Downloads the remote images used by migrated posts and repoints the posts at the local copies. Skips URLs already localized; remembers dead ones.
         attachments: Migrates MyBB post attachments into local storage and appends them to the migrated posts.
