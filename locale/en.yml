@@ -278,6 +278,7 @@ ramon-mybb-migrator:
         make-admin: Promote your account to Admin (set the username).
         images: Downloads the remote images used by migrated posts and repoints the posts at the local copies. Skips URLs already localized; remembers dead ones.
         attachments: Migrates MyBB post attachments into local storage and appends them to the migrated posts.
+        reviews-localize-photos: Downloads the review photos still stored as links (imgur) and stores them on the community-reviews disk, exactly like a photo uploaded in the forum. Safe to re-run; failed downloads stay as links.
         optimize-media: Re-encodes files already localized (WebP + resize), repoints the posts and the media manager at the new file, then deletes the old one. For anything migrated before optimization existed.
         optimize-media-all: Every image in this forum in one pass — localized files, files on disk with no map row, and avatars. Files already optimized cost nothing (no gain, left untouched), so it is safe to re-run.
         legacy-passwords: Backfill mybb_legacy_passwords for existing users (carry MyBB passwords to an already-migrated Flarum). Skips users that already have a row.

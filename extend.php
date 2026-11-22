@@ -15,6 +15,7 @@ use Ramon\MybbMigrator\Auth\MybbPasswordChecker;
 use Ramon\MybbMigrator\Console\FixCharsetCommand;
 use Ramon\MybbMigrator\Console\FixControlCharsCommand;
 use Ramon\MybbMigrator\Console\GuiRunCommand;
+use Ramon\MybbMigrator\Console\LocalizeReviewPhotosCommand;
 use Ramon\MybbMigrator\Console\FixDiscussionSlugsCommand;
 use Ramon\MybbMigrator\Console\FixEmojisCommand;
 use Ramon\MybbMigrator\Console\FixFontBbcodeCommand;
@@ -182,6 +183,7 @@ return [
         ->command(MigratePollsCommand::class)
         ->command(MigrateTradeFeedbackCommand::class)
         ->command(MigrateReviewsCommand::class)
+        ->command(LocalizeReviewPhotosCommand::class)
         ->command(CompactQuotesCommand::class)
         ->command(RestoreQuotesCommand::class)
         ->command(FixTapatalkEmojiCommand::class)
