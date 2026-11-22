@@ -305,6 +305,20 @@ Photos (`--photos`):
 Paths stored relative to the MyBB site are resolved against `--photo-base-url`
 (default: the panel's *old site URL*); without one they are skipped and counted.
 
+Already migrated with `--photos=link` (the default)? `mybb:reviews-localize-photos`
+moves those photos to the forum later, without re-running the migration: every
+review photo that is still a link (imgur) is downloaded and handed to the
+extension's `Photo\Uploader`, and the same row becomes a local photo (same id,
+review, position, owner and date; only `path`/`thumb_path`/size are filled and
+`url`/`thumb_url` cleared, like a photo uploaded in the forum). A failed download
+stays a link and is retried on the next run.
+
+```bash
+php flarum mybb:reviews-localize-photos --dry-run          # count, per host
+php flarum mybb:reviews-localize-photos --force --limit=20 # a sample first
+php flarum mybb:reviews-localize-photos --force            # the rest
+```
+
 ```bash
 php flarum mybb:reviews --dry-run                       # read + convert, write nothing
 php flarum mybb:reviews --force --photos=download --photo-owner=1
