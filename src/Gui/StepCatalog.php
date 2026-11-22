@@ -65,6 +65,9 @@ class StepCatalog
             // Reencoda o que JÁ está no disco (quem migrou antes da otimização
             // existir, ou rodou com --no-optimize). Troca o arquivo, a linha do
             // fof/upload e a URL dentro dos posts, nessa ordem.
+            // Fotos de reviews que ficaram como link (imgur) → disco da extensão.
+            // Manual: baixa arquivos; rodar depois de mybb:reviews.
+            self::s('reviews-localize-photos', 'mybb:reviews-localize-photos', 'media', options: ['dry-run', 'limit', 'host-delay', 'insecure'], manual: true),
             self::s('optimize-media', 'mybb:optimize-media', 'media', options: ['dry-run', 'limit', 'kind', 'quality', 'max-dim', 'min-gain', 'no-webp', 'keep-old', 'include-orphans', 'include-avatars', 'skip-map'], manual: true),
 
             // O mesmo comando com `--all`: mapa + arquivos sem linha no mapa +

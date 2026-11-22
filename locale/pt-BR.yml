@@ -280,6 +280,7 @@ ramon-mybb-migrator:
         make-admin: Promove sua conta a Admin (informe o usuário).
         images: Baixa as imagens remotas usadas pelos posts migrados e reaponta os posts para a cópia local. Pula URLs já internalizadas; lembra as mortas.
         attachments: Migra os anexos dos posts do MyBB para o armazenamento local e os acrescenta aos posts migrados.
+        reviews-localize-photos: Baixa as fotos de reviews que ainda são links (imgur) e grava no disco da community-reviews, igual a uma foto enviada pelo fórum. Pode rodar de novo; o que falhar continua como link.
         optimize-media: Reencoda o que já foi internalizado (WebP + redimensionamento), reaponta os posts e o gerenciador de mídia para o arquivo novo e só então apaga o antigo. Para o que foi migrado antes de a otimização existir.
         optimize-media-all: TODAS as imagens do fórum numa passada — arquivos internalizados, arquivos em disco sem linha no mapa e avatares. O que já está otimizado não custa nada (não rende ganho e fica intacto), então dá para rodar de novo à vontade.
         legacy-passwords: Preenche mybb_legacy_passwords para usuários já existentes (leva as senhas do MyBB a um Flarum já migrado). Pula quem já tem linha.
