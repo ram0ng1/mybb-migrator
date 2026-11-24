@@ -305,6 +305,16 @@ Photos (`--photos`):
 Paths stored relative to the MyBB site are resolved against `--photo-base-url`
 (default: the panel's *old site URL*); without one they are skipped and counted.
 
+**"not ranked yet"** on a product means it has fewer reviews than *Reviews before a
+product is ranked* (Community Reviews settings, default 3): its rating is shown,
+but it stays out of *Top rated* and the page's spotlight. The extension applies a
+new value only to products that get a new review, so after changing it run:
+
+```bash
+php flarum mybb:reviews-refresh --dry-run   # how many products qualify now
+php flarum mybb:reviews-refresh --force     # recompute every product and category
+```
+
 Already migrated with `--photos=link` (the default)? `mybb:reviews-localize-photos`
 moves those photos to the forum later, without re-running the migration: every
 review photo that is still a link (imgur) is downloaded and handed to the
