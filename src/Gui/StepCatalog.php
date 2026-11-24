@@ -54,6 +54,9 @@ class StepCatalog
             // --photo-owner fica de fora do painel: o valor "1" (id do admin) chegaria
             // como flag booleana (GuiRunCommand trata '1' como true).
             self::s('reviews',        'mybb:reviews',        '2', options: ['dry-run', 'photos', 'photo-base-url']),
+            // Recalcula ranking/notas/contagens de todos os produtos (ex.: depois
+            // de mudar "Reviews before a product is ranked" no admin).
+            self::s('reviews-refresh', 'mybb:reviews-refresh', '2', options: ['dry-run'], manual: true),
             self::s('make-admin',     'mybb:make-admin',     '2', options: ['username', 'like'], requiresUsername: true, manual: true),
 
             // ---- Mídia: imagens remotas e anexos (fora das sequências) ----
