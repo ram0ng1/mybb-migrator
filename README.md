@@ -811,6 +811,38 @@ No password resets, no e-mails — users log in with their existing credentials.
 
 ---
 
+## 5.1. Old MyBB links (301 redirects)
+
+Because every id is preserved, an old MyBB link points straight at the
+migrated content. The extension answers those URLs itself with a **301** to
+the Flarum address, so external links, bookmarks and search engines keep
+working after the switch (no lookup table, no SEO extension):
+
+| Old MyBB URL | Goes to |
+|---|---|
+| `showthread.php?tid=12`, `thread-12.html`, `thread-12-page-3.html`, `printthread.php?tid=12`, `archive/index.php/thread-12.html` | `/d/12-title` |
+| `showthread.php?pid=34`, `thread-12-post-34.html`, `post-34.html` | `/d/12-title/{post number}` |
+| `showthread.php?tid=12&action=lastpost`, `thread-12-lastpost.html` | `/d/12-title/{last post}` |
+| `forumdisplay.php?fid=5`, `forum-5.html`, `forum-5-page-2.html`, `archive/index.php/forum-5.html` | `/t/{tag slug}` |
+| `member.php?action=profile&uid=7`, `user-7.html` | `/u/{username}` |
+
+The target respects what the visitor can see: the title (slug) only goes in
+the URL when they can see the discussion; a hidden one redirects to `/d/12`,
+and a restricted tag or user falls through to the normal 404, so no name leaks
+in the `Location` header. Anything else is untouched.
+
+**nginx:** the `.html` forms already reach Flarum through the usual
+`try_files ... /index.php?$query_string`. The `.php` forms only do if nginx
+hands them to Flarum's `index.php` instead of looking for the file. Add this
+before your `location ~ \.php$` block (or your old rewrites for MyBB, which
+this replaces):
+
+```nginx
+location ~ ^/(showthread|forumdisplay|member|printthread|archive/index)\.php {
+    rewrite ^ /index.php last;
+}
+```
+
 ## 6. Architecture
 
 ```text
