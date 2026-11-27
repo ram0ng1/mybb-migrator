@@ -65,10 +65,18 @@ use Ramon\MybbMigrator\Console\OptimizeMediaCommand;
 use Ramon\MybbMigrator\Console\TestBioRenderCommand;
 use Ramon\MybbMigrator\Console\TestCredentialsCommand;
 use Ramon\MybbMigrator\Console\WipeCommand;
+use Ramon\MybbMigrator\Http\LegacyRedirectMiddleware;
 
 return [
     (new Extend\Frontend('forum'))
         ->css(__DIR__ . '/less/signature.less'),
+
+    // URLs do MyBB antigo (showthread.php, thread-1.html, forumdisplay.php…)
+    // → 301 para o tópico, post, tag ou perfil migrado com o mesmo id.
+    (new Extend\Middleware('forum'))
+        // Antes do resolvedor de rotas, que responderia 404 a estes caminhos;
+        // depois da sessão, para o destino respeitar o que o ator vê.
+        ->insertBefore('flarum.forum.route_resolver', LegacyRedirectMiddleware::class),
 
     (new Extend\Frontend('admin'))
         ->css(__DIR__ . '/less/admin.less')
