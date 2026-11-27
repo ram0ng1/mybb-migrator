@@ -19,3 +19,4 @@ require __DIR__ . '/../src/Support/ImgurClient.php';
 require __DIR__ . '/../src/Support/OrphanBbcode.php';
 require __DIR__ . '/../src/Support/XmlText.php';
 require __DIR__ . '/../src/Support/ReviewMath.php';
+require __DIR__ . '/../src/Http/LegacyUrl.php';
